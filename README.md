@@ -4,7 +4,7 @@ Herramienta robusta para el análisis de Call Detail Records (CDR) diseñada par
 
 ## 🚀 Características
 
-- **Análisis de CSV:** Soporta archivos CSV con separador `;` y encoding `UTF-8`.
+- **Análisis de Archivos:** Soporta archivos CSV y TXT con separador `;` y encoding `UTF-8`.
 - **Validación de Columnas:** Verifica la existencia de `call_date`, `e164` y `sip_code`.
 - **Lógica de Exclusión:**
   - **Regla 1:** Excluye números con al menos un `sip_code = 200`.
@@ -53,4 +53,4 @@ El archivo CSV debe tener el siguiente formato:
 2. **Exclusión por Contacto:** Si existe algún registro con `sip_code = 200`, el número se descarta.
 3. **Exclusión por Número Inválido:** Si el porcentaje de `sip_code = 404` es mayor al 30%, el número se descarta.
 4. **Filtro Temporal:** Se calcula la fecha máxima (`max_date`) y se filtran los registros dentro de `max_date - analysis_days`.
-5. **Clasificación Final:** Los números que superan las exclusiones y tienen registros en la ventana temporal se marcan como `NO_RESPONSE_TEMP`.
+5. **Clasificación Final:** Los números que superan las exclusiones y tienen **más de 4 registros** en la ventana temporal se marcan como `NO_RESPONSE_TEMP`.

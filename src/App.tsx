@@ -23,7 +23,7 @@ export default function App() {
 
   const handleProcess = async () => {
     if (!file) {
-      setError('Por favor, selecciona un archivo CSV.');
+      setError('Por favor, selecciona un archivo CSV o TXT.');
       return;
     }
 
@@ -95,12 +95,12 @@ export default function App() {
             {/* File Upload Section */}
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                Archivo CDR (CSV; UTF-8)
+                Archivo CDR (CSV/TXT; UTF-8)
               </label>
               <div className="relative">
                 <input
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.txt"
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
@@ -113,7 +113,7 @@ export default function App() {
                 >
                   <Upload className={`w-8 h-8 mb-2 ${file ? 'text-blue-600' : 'text-gray-400'}`} />
                   <span className="text-sm text-gray-600 font-medium">
-                    {file ? file.name : 'Seleccionar archivo CSV'}
+                    {file ? file.name : 'Seleccionar archivo CSV o TXT'}
                   </span>
                   <span className="text-xs text-gray-400 mt-1">Separador ";" requerido</span>
                 </label>
@@ -165,7 +165,8 @@ export default function App() {
         {result && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Statistics Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard label="Total Registros Analizados" value={result.total_registros} icon={<BarChart2 className="w-5 h-5" />} color="text-indigo-600" />
               <StatCard label="Total Números Únicos" value={result.total_numeros_unicos} icon={<FileText className="w-5 h-5" />} />
               <StatCard label="Excluidos (SIP 200)" value={result.numeros_excluidos_200} color="text-orange-600" />
               <StatCard label="Excluidos (SIP 404 > 30%)" value={result.numeros_excluidos_404} color="text-red-600" />
@@ -184,7 +185,7 @@ export default function App() {
             {/* Results Table & Download */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
               <div className="p-6 border-bottom border-gray-100 flex items-center justify-between bg-gray-50">
-                <h3 className="text-lg font-bold text-gray-900">Resultados del Análisis</h3>
+                <h3 className="text-lg font-bold text-gray-900">NO_RESPONSE_TEMP numbers</h3>
                 <button
                   onClick={handleDownload}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-sm transition-all shadow-md hover:shadow-green-100"

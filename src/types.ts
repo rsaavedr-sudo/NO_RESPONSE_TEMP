@@ -17,6 +17,7 @@ export interface CDRRecord {
 }
 
 export interface AnalysisResult {
+  total_registros: number;
   total_numeros_unicos: number;
   numeros_excluidos_200: number;
   numeros_excluidos_404: number;

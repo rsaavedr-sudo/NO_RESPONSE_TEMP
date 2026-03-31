@@ -2,6 +2,32 @@ import { subDays, isAfter, isBefore, isEqual } from 'date-fns';
 import { CDRRecord, AnalysisResult } from '../types';
 import { parseDate } from './parser';
 
+const isSipCode = (recordSip: string, targetSip: string): boolean => {
+  if (!recordSip) return false;
+  
+  const cleanSip = recordSip.toString().trim().toLowerCase();
+  const target = targetSip.toString();
+
+  // Direct match
+  if (cleanSip === target) return true;
+
+  // Hex match: if cleanSip is hex (e.g. "c8" for 200)
+  try {
+    const hexVal = parseInt(cleanSip, 16);
+    const targetVal = parseInt(target, 10);
+    if (!isNaN(hexVal) && hexVal === targetVal) return true;
+  } catch {}
+
+  // Decimal match
+  try {
+    const decVal = parseInt(cleanSip, 10);
+    const targetVal = parseInt(target, 10);
+    if (!isNaN(decVal) && decVal === targetVal) return true;
+  } catch {}
+
+  return false;
+};
+
 export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisResult => {
   const groupedByE164 = new Map<string, CDRRecord[]>();
   let discardedRows = 0;
@@ -13,9 +39,13 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
       discardedRows++;
       return;
     }
-    const list = groupedByE164.get(record.e164) || [];
+    
+    // Use original e164 without any modification
+    const e164 = record.e164?.toString() || '';
+
+    const list = groupedByE164.get(e164) || [];
     list.push(record);
-    groupedByE164.set(record.e164, list);
+    groupedByE164.set(e164, list);
   });
 
   // Find max date in the entire dataset
@@ -31,6 +61,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
 
   if (!maxDate) {
     return {
+      total_registros: data.length,
       total_numeros_unicos: 0,
       numeros_excluidos_200: 0,
       numeros_excluidos_404: 0,
@@ -53,14 +84,14 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
 
   groupedByE164.forEach((records, e164) => {
     // Rule 1: Exclusion by 200
-    const has200 = records.some(r => r.sip_code === '200');
+    const has200 = records.some(r => isSipCode(r.sip_code, '200'));
     if (has200) {
       excluded200++;
       return;
     }
 
     // Rule 2: Exclusion by 404 percentage
-    const count404 = records.filter(r => r.sip_code === '404').length;
+    const count404 = records.filter(r => isSipCode(r.sip_code, '404')).length;
     const pct404 = count404 / records.length;
     if (pct404 > 0.30) {
       excluded404++;
@@ -75,7 +106,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
     });
 
     // Rule 5: Classification
-    if (recordsInWindow.length > 0) {
+    if (recordsInWindow.length > 4) {
       matchCount++;
       outputData.push({
         e164,
@@ -87,6 +118,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
   });
 
   return {
+    total_registros: data.length,
     total_numeros_unicos: totalNumerosUnicos,
     numeros_excluidos_200: excluded200,
     numeros_excluidos_404: excluded404,

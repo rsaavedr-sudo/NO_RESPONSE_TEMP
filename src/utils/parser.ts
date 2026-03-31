@@ -8,6 +8,7 @@ export const parseCSV = (file: File): Promise<{ data: CDRRecord[]; errors: numbe
       delimiter: ';',
       encoding: 'utf-8',
       skipEmptyLines: true,
+      dynamicTyping: false,
       complete: (results) => {
         const data: CDRRecord[] = [];
         let errors = 0;

@@ -10,7 +10,7 @@ st.title("📊 CDR Analyzer")
 st.markdown("Analizador robusto de Call Detail Records para identificación de NO_RESPONSE_TEMP")
 
 # File Upload
-uploaded_file = st.file_uploader("Sube tu archivo CDR (CSV; UTF-8)", type=["csv"])
+uploaded_file = st.file_uploader("Sube tu archivo CDR (CSV/TXT; UTF-8)", type=["csv", "txt"])
 
 # Parameters
 analysis_days = st.number_input("Días de análisis (analysis_days)", min_value=1, value=7, step=1)
@@ -34,7 +34,8 @@ if uploaded_file is not None:
                     # Display Stats
                     st.success("Análisis completado")
                     
-                    col1, col2, col3 = st.columns(3)
+                    col0, col1, col2, col3 = st.columns(4)
+                    col0.metric("Total Registros Analizados", results['total_registros'])
                     col1.metric("Total Números Únicos", results['total_numeros_unicos'])
                     col2.metric("Excluidos (SIP 200)", results['numeros_excluidos_200'])
                     col3.metric("Excluidos (SIP 404 > 30%)", results['numeros_excluidos_404'])
@@ -48,7 +49,7 @@ if uploaded_file is not None:
                         st.warning(f"Se descartaron {discarded_rows} filas por errores de parsing de fecha.")
                     
                     # Results and Download
-                    st.subheader("Resultados del Análisis")
+                    st.subheader("NO_RESPONSE_TEMP numbers")
                     st.dataframe(output_df.head(100))
                     
                     csv = output_df.to_csv(index=False).encode('utf-8')
