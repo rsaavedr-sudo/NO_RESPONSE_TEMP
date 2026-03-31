@@ -40,32 +40,38 @@ def analyze_cdr(df, analysis_days, min_frequency=5):
     
     for e164, group in grouped:
         # Rule 1: Exclude if any sip_code = 200
-        if group['sip_code'].apply(lambda x: is_sip_code(x, 200)).any():
-            excluded_200 += 1
-            continue
+        has_200 = group['sip_code'].apply(lambda x: is_sip_code(x, 200)).any()
             
         # Rule 2: Exclude if pct_404 > 0.30
         is_404 = group['sip_code'].apply(lambda x: is_sip_code(x, 404))
         pct_404 = is_404.sum() / len(group)
-        if pct_404 > 0.30:
-            excluded_404 += 1
-            continue
             
         # Rule 3: Universe Valid (Candidate)
         # Rule 4: Filter by time window
         group_in_window = group[group['call_date'] >= cutoff_date]
+        frequency = len(group_in_window)
         
         # Rule 5: Classification
-        if len(group_in_window) >= min_frequency:
+        is_match = not has_200 and pct_404 <= 0.30 and frequency >= min_frequency
+        status = "NO_RESPONSE_TEMP" if is_match else "OTHER"
+
+        if is_match:
             match_count += 1
-            output_list.append({
-                'e164': e164,
-                'frequency': len(group_in_window)
-            })
         else:
-            if len(group_in_window) > 0:
+            if has_200:
+                excluded_200 += 1
+            elif pct_404 > 0.30:
+                excluded_404 += 1
+            elif frequency > 0 and frequency < min_frequency:
                 insufficient_frequency += 1
             no_match_count += 1
+            
+        output_list.append({
+            'e164': e164,
+            'frequency': frequency,
+            'pct_404': pct_404,
+            'status': status
+        })
             
     results = {
         'total_registros': len(df),

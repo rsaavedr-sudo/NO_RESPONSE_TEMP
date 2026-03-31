@@ -26,5 +26,5 @@ export interface AnalysisResult {
   numeros_match: number;
   numeros_no_match: number;
   discarded_rows: number;
-  output_data: { e164: string; frequency: number }[];
+  output_data: { e164: string; frequency: number; pct_404: number; status: string }[];
 }

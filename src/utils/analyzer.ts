@@ -82,24 +82,16 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number, minFrequency
   let insufficientFrequency = 0;
   let matchCount = 0;
   let noMatchCount = 0;
-  const outputData: { e164: string; frequency: number }[] = [];
+  const outputData: { e164: string; frequency: number; pct_404: number; status: string }[] = [];
 
   groupedByE164.forEach((records, e164) => {
     // Rule 1: Exclusion by 200
     const has200 = records.some(r => isSipCode(r.sip_code, '200'));
-    if (has200) {
-      excluded200++;
-      return;
-    }
-
+    
     // Rule 2: Exclusion by 404 percentage
     const count404 = records.filter(r => isSipCode(r.sip_code, '404')).length;
     const pct404 = count404 / records.length;
-    if (pct404 > 0.30) {
-      excluded404++;
-      return;
-    }
-
+    
     // Rule 3: Valid Universe (Candidate)
     // Rule 4: Filter records by time window
     const recordsInWindow = records.filter(r => {
@@ -107,19 +99,32 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number, minFrequency
       return date && (isAfter(date, cutoffDate) || isEqual(date, cutoffDate));
     });
 
+    const frequency = recordsInWindow.length;
+    
     // Rule 5: Classification
-    if (recordsInWindow.length >= minFrequency) {
+    const isNoResponseTemp = !has200 && pct404 <= 0.30 && frequency >= minFrequency;
+    
+    const status = isNoResponseTemp ? 'NO_RESPONSE_TEMP' : 'OTHER';
+
+    if (isNoResponseTemp) {
       matchCount++;
-      outputData.push({
-        e164,
-        frequency: recordsInWindow.length
-      });
     } else {
-      if (recordsInWindow.length > 0) {
+      if (has200) {
+        excluded200++;
+      } else if (pct404 > 0.30) {
+        excluded404++;
+      } else if (frequency > 0 && frequency < minFrequency) {
         insufficientFrequency++;
       }
       noMatchCount++;
     }
+
+    outputData.push({
+      e164,
+      frequency,
+      pct_404: pct404,
+      status
+    });
   });
 
   return {

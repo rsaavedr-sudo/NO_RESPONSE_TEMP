@@ -63,10 +63,21 @@ if uploaded_file is not None:
                         st.warning(f"Se descartaron {discarded_rows} filas por errores de parsing de fecha.")
                     
                     # Results and Download
-                    st.subheader("NO_RESPONSE_TEMP numbers")
-                    st.dataframe(output_df.head(100))
+                    st.subheader("Analysis Results")
                     
-                    csv = output_df.to_csv(index=False).encode('utf-8')
+                    # Format for display
+                    display_df = output_df.copy()
+                    display_df['pct_404'] = (display_df['pct_404'] * 100).round(1).astype(str) + '%'
+                    
+                    st.dataframe(display_df.head(100))
+                    
+                    # Prepare CSV for download
+                    csv_df = output_df.copy()
+                    csv_df['pct_404'] = (csv_df['pct_404'] * 100).round(2).astype(str) + '%'
+                    csv_df['analysis_days'] = analysis_days
+                    csv_df['min_frequency'] = min_frequency
+                    
+                    csv = csv_df.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="Descargar CSV",
                         data=csv,

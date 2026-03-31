@@ -65,6 +65,8 @@ export default function App() {
     const csvData = result.output_data.map(item => ({
       e164: item.e164,
       frequency: item.frequency,
+      pct_404: (item.pct_404 * 100).toFixed(2) + '%',
+      status: item.status,
       analysis_days: analysisDays,
       min_frequency: minFrequency
     }));
@@ -222,15 +224,25 @@ export default function App() {
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-white sticky top-0 shadow-sm">
                     <tr>
-                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b">e164</th>
-                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b">Frequency</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b text-left">e164</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b text-center">Frequency</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b text-center">% 404</th>
+                      <th className="px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider border-b text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {result.output_data.slice(0, 100).map((item, idx) => (
                       <tr key={idx} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 text-sm font-mono text-gray-900">{item.e164}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-gray-600">{item.frequency}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-600 text-center">{item.frequency}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-600 text-center">{(item.pct_404 * 100).toFixed(1)}%</td>
+                        <td className="px-6 py-4 text-sm font-bold text-right">
+                          <span className={`px-2 py-1 rounded-md text-[10px] uppercase ${
+                            item.status === 'NO_RESPONSE_TEMP' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {item.status}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                     {result.output_data.length > 100 && (
