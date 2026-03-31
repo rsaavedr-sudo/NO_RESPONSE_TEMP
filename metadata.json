@@ -1,0 +1,5 @@
+{
+  "name": "CDR Analyzer",
+  "description": "Herramienta robusta para el análisis de Call Detail Records (CDR) con lógica de exclusión y filtrado temporal.",
+  "requestFramePermissions": []
+}
