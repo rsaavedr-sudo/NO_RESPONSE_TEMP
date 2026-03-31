@@ -28,7 +28,7 @@ const isSipCode = (recordSip: string, targetSip: string): boolean => {
   return false;
 };
 
-export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisResult => {
+export const analyzeCDR = (data: CDRRecord[], analysisDays: number, minFrequency: number = 5): AnalysisResult => {
   const groupedByE164 = new Map<string, CDRRecord[]>();
   let discardedRows = 0;
 
@@ -65,6 +65,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
       total_numeros_unicos: 0,
       numeros_excluidos_200: 0,
       numeros_excluidos_404: 0,
+      numeros_con_frecuencia_insuficiente: 0,
       numeros_analizados: 0,
       numeros_match: 0,
       numeros_no_match: 0,
@@ -78,6 +79,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
   let totalNumerosUnicos = groupedByE164.size;
   let excluded200 = 0;
   let excluded404 = 0;
+  let insufficientFrequency = 0;
   let matchCount = 0;
   let noMatchCount = 0;
   const outputData: { e164: string; frequency: number }[] = [];
@@ -106,13 +108,16 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
     });
 
     // Rule 5: Classification
-    if (recordsInWindow.length > 4) {
+    if (recordsInWindow.length >= minFrequency) {
       matchCount++;
       outputData.push({
         e164,
         frequency: recordsInWindow.length
       });
     } else {
+      if (recordsInWindow.length > 0) {
+        insufficientFrequency++;
+      }
       noMatchCount++;
     }
   });
@@ -122,6 +127,7 @@ export const analyzeCDR = (data: CDRRecord[], analysisDays: number): AnalysisRes
     total_numeros_unicos: totalNumerosUnicos,
     numeros_excluidos_200: excluded200,
     numeros_excluidos_404: excluded404,
+    numeros_con_frecuencia_insuficiente: insufficientFrequency,
     numeros_analizados: totalNumerosUnicos - excluded200 - excluded404,
     numeros_match: matchCount,
     numeros_no_match: noMatchCount,

@@ -21,6 +21,7 @@ export interface AnalysisResult {
   total_numeros_unicos: number;
   numeros_excluidos_200: number;
   numeros_excluidos_404: number;
+  numeros_con_frecuencia_insuficiente: number;
   numeros_analizados: number;
   numeros_match: number;
   numeros_no_match: number;

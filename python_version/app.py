@@ -24,7 +24,9 @@ st.markdown("Analizador robusto de Call Detail Records para identificación de N
 uploaded_file = st.file_uploader("Sube tu archivo CDR (CSV/TXT; UTF-8)", type=["csv", "txt"])
 
 # Parameters
-analysis_days = st.number_input("Días de análisis (analysis_days)", min_value=1, value=7, step=1)
+col_p1, col_p2 = st.columns(2)
+analysis_days = col_p1.number_input("Días de análisis (analysis_days)", min_value=1, value=7, step=1)
+min_frequency = col_p2.number_input("Frecuencia mínima (min_frequency)", min_value=1, value=5, step=1)
 
 if uploaded_file is not None:
     try:
@@ -40,7 +42,7 @@ if uploaded_file is not None:
                 with st.spinner("Procesando..."):
                     # Parse and Analyze
                     df_parsed, discarded_rows = parse_cdr_file(df)
-                    results, output_df = analyze_cdr(df_parsed, analysis_days)
+                    results, output_df = analyze_cdr(df_parsed, analysis_days, min_frequency)
                     
                     # Display Stats
                     st.success("Análisis completado")
@@ -51,10 +53,11 @@ if uploaded_file is not None:
                     col2.metric("Excluidos (SIP 200)", results['numeros_excluidos_200'])
                     col3.metric("Excluidos (SIP 404 > 30%)", results['numeros_excluidos_404'])
                     
-                    col4, col5, col6 = st.columns(3)
-                    col4.metric("Números Analizados", results['numeros_analizados'])
-                    col5.metric("Match (NO_RESPONSE_TEMP)", results['numeros_match'])
-                    col6.metric("No Match", results['numeros_no_match'])
+                    col4, col5, col6, col7 = st.columns(4)
+                    col4.metric("Frecuencia Insuficiente", results['numeros_con_frecuencia_insuficiente'])
+                    col5.metric("Números Analizados", results['numeros_analizados'])
+                    col6.metric("Match (NO_RESPONSE_TEMP)", results['numeros_match'])
+                    col7.metric("No Match", results['numeros_no_match'])
                     
                     if discarded_rows > 0:
                         st.warning(f"Se descartaron {discarded_rows} filas por errores de parsing de fecha.")

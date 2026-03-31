@@ -9,6 +9,7 @@ import Papa from 'papaparse';
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [analysisDays, setAnalysisDays] = useState<number>(7);
+  const [minFrequency, setMinFrequency] = useState<number>(5);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +49,7 @@ export default function App() {
         return;
       }
 
-      const analysisResult = analyzeCDR(data, analysisDays);
+      const analysisResult = analyzeCDR(data, analysisDays, minFrequency);
       setResult(analysisResult);
     } catch (err) {
       setError('Error al procesar el archivo. Asegúrate de que sea un CSV válido con separador ";"');
@@ -64,7 +65,8 @@ export default function App() {
     const csvData = result.output_data.map(item => ({
       e164: item.e164,
       frequency: item.frequency,
-      analysis_days: analysisDays
+      analysis_days: analysisDays,
+      min_frequency: minFrequency
     }));
 
     const csv = Papa.unparse(csvData);
@@ -129,20 +131,37 @@ export default function App() {
               <label className="block text-sm font-semibold text-gray-700 uppercase tracking-wider">
                 Parámetros de Análisis
               </label>
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <Calendar className="w-5 h-5 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">Días de análisis (analysis_days)</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Calendar className="w-5 h-5 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">Días de análisis</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={analysisDays}
+                    onChange={(e) => setAnalysisDays(parseInt(e.target.value) || 1)}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  />
                 </div>
-                <input
-                  type="number"
-                  min="1"
-                  value={analysisDays}
-                  onChange={(e) => setAnalysisDays(parseInt(e.target.value) || 1)}
-                  className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                />
-                <p className="text-xs text-gray-500 mt-2 italic">Rango: 1 a N días desde la fecha máxima del dataset</p>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-3 mb-2">
+                    <BarChart2 className="w-5 h-5 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">Frecuencia mínima</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={minFrequency}
+                    onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
+                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
               </div>
+              <p className="text-xs text-gray-500 mt-2 italic">
+                Días desde la fecha máxima del dataset. Frecuencia mínima por número en el periodo.
+              </p>
             </div>
           </div>
 
@@ -174,6 +193,7 @@ export default function App() {
               <StatCard label="Total Números Únicos" value={result.total_numeros_unicos} icon={<FileText className="w-5 h-5" />} />
               <StatCard label="Excluidos (SIP 200)" value={result.numeros_excluidos_200} color="text-orange-600" />
               <StatCard label="Excluidos (SIP 404 > 30%)" value={result.numeros_excluidos_404} color="text-red-600" />
+              <StatCard label="Frecuencia Insuficiente" value={result.numeros_con_frecuencia_insuficiente} color="text-amber-600" />
               <StatCard label="Números Analizados" value={result.numeros_analizados} color="text-blue-600" />
               <StatCard label="Match (NO_RESPONSE_TEMP)" value={result.numeros_match} color="text-green-600" icon={<CheckCircle className="w-5 h-5" />} />
               <StatCard label="No Match" value={result.numeros_no_match} color="text-gray-500" />

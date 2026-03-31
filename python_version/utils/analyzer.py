@@ -19,7 +19,7 @@ def is_sip_code(record_sip, target_sip):
     
     return False
 
-def analyze_cdr(df, analysis_days):
+def analyze_cdr(df, analysis_days, min_frequency=5):
     """
     Implement the business logic rules.
     """
@@ -33,6 +33,7 @@ def analyze_cdr(df, analysis_days):
     total_numeros_unicos = len(grouped)
     excluded_200 = 0
     excluded_404 = 0
+    insufficient_frequency = 0
     match_count = 0
     no_match_count = 0
     output_list = []
@@ -55,13 +56,15 @@ def analyze_cdr(df, analysis_days):
         group_in_window = group[group['call_date'] >= cutoff_date]
         
         # Rule 5: Classification
-        if len(group_in_window) > 4:
+        if len(group_in_window) >= min_frequency:
             match_count += 1
             output_list.append({
                 'e164': e164,
                 'frequency': len(group_in_window)
             })
         else:
+            if len(group_in_window) > 0:
+                insufficient_frequency += 1
             no_match_count += 1
             
     results = {
@@ -69,6 +72,7 @@ def analyze_cdr(df, analysis_days):
         'total_numeros_unicos': total_numeros_unicos,
         'numeros_excluidos_200': excluded_200,
         'numeros_excluidos_404': excluded_404,
+        'numeros_con_frecuencia_insuficiente': insufficient_frequency,
         'numeros_analizados': total_numeros_unicos - excluded_200 - excluded_404,
         'numeros_match': match_count,
         'numeros_no_match': no_match_count
