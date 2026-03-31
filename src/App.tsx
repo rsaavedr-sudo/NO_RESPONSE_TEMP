@@ -80,7 +80,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans relative">
+      <div className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2">
+        <span className="text-gray-800 font-bold text-lg tracking-tight">T-Zero</span>
+        <span className="text-green-600 font-medium text-sm tracking-widest uppercase">Technology</span>
+      </div>
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-3">

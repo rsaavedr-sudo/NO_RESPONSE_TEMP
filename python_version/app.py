@@ -6,6 +6,17 @@ from utils.validator import validate_columns
 
 st.set_page_config(page_title="CDR Analyzer", layout="wide")
 
+# Logo (Top Left)
+st.markdown(
+    """
+    <div style="position: fixed; top: 10px; left: 20px; z-index: 1000; display: flex; align-items: center; gap: 8px;">
+        <span style="color: #1f2937; font-weight: bold; font-size: 18px; letter-spacing: -0.5px;">T-Zero</span>
+        <span style="color: #16a34a; font-weight: 500; font-size: 14px; letter-spacing: 2px; text-transform: uppercase;">Technology</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("📊 CDR Analyzer")
 st.markdown("Analizador robusto de Call Detail Records para identificación de NO_RESPONSE_TEMP")
 
