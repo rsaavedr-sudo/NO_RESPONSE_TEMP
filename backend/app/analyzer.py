@@ -67,8 +67,9 @@ def analyze_cdr_chunked(
             progress_callback(30, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
 
         # We'll use a dictionary to accumulate stats per e164
-        # e164 -> {total, has_200, count_404, first_date, last_date, days}
+        # e164 -> {total, sip_counts, first_date, last_date, days}
         stats = {}
+        all_sip_codes = set()
         
         rows_processed_pass2 = 0
         
@@ -85,7 +86,13 @@ def analyze_cdr_chunked(
                 
                 # Basic cleaning
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-                chunk = chunk.dropna(subset=['call_date', 'e164'])
+                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
+                
+                if chunk.empty:
+                    continue
+                
+                # Ensure sip_code is integer for consistent keys
+                chunk['sip_code'] = chunk['sip_code'].astype(int)
                 
                 # Filter by window
                 chunk = chunk[chunk['call_date'] >= start_date]
@@ -93,41 +100,42 @@ def analyze_cdr_chunked(
                 if chunk.empty:
                     continue
                 
+                # Track unique sip codes
+                all_sip_codes.update(chunk['sip_code'].unique())
+                
                 # Date only for daily frequency calculation
                 chunk['date_only'] = chunk['call_date'].dt.date
                     
-                # Group by e164 in this chunk
-                chunk_stats = chunk.groupby('e164').agg(
+                # Group by e164 and sip_code for counts
+                sip_counts_chunk = chunk.groupby(['e164', 'sip_code']).size()
+                
+                # Group by e164 for basic metrics
+                basic_stats_chunk = chunk.groupby('e164').agg(
                     total=('sip_code', 'count'),
-                    has_200=('sip_code', lambda x: (x == 200).any()),
-                    count_404=('sip_code', lambda x: (x == 404).sum()),
                     min_dt=('call_date', 'min'),
                     max_dt=('call_date', 'max'),
                     unique_days=('date_only', lambda x: set(x))
                 )
                 
                 # Merge with global stats
-                for e164, row in chunk_stats.iterrows():
+                for (e164, sip_code), count in sip_counts_chunk.items():
                     if e164 not in stats:
                         stats[e164] = {
                             'total': 0, 
-                            'has_200': False, 
-                            'count_404': 0, 
-                            'first_date': row['min_dt'], 
-                            'last_date': row['max_dt'],
-                            'days': row['unique_days']
+                            'sip_counts': {},
+                            'first_date': None, 
+                            'last_date': None,
+                            'days': set()
                         }
-                    
+                    stats[e164]['sip_counts'][sip_code] = stats[e164]['sip_counts'].get(sip_code, 0) + count
+                
+                for e164, row in basic_stats_chunk.iterrows():
                     s = stats[e164]
                     s['total'] += row['total']
-                    s['has_200'] = s['has_200'] or row['has_200']
-                    s['count_404'] += row['count_404']
-                    
-                    if row['min_dt'] < s['first_date']:
+                    if s['first_date'] is None or row['min_dt'] < s['first_date']:
                         s['first_date'] = row['min_dt']
-                    if row['max_dt'] > s['last_date']:
+                    if s['last_date'] is None or row['max_dt'] > s['last_date']:
                         s['last_date'] = row['max_dt']
-                    
                     s['days'].update(row['unique_days'])
                 
                 if progress_callback:
@@ -147,17 +155,22 @@ def analyze_cdr_chunked(
         numeros_match = 0
         numeros_no_match = 0
 
+        # Sort sip codes for consistent column order
+        sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
+
         for e164, data in stats.items():
             total = data['total']
-            has_200 = data['has_200']
-            count_404 = data['count_404']
-            pct_404 = (count_404 / total * 100) if total > 0 else 0
+            sip_counts = data['sip_counts']
+            
+            has_200 = 200 in sip_counts
+            count_404 = sip_counts.get(404, 0)
+            pct_404_val = (count_404 / total * 100) if total > 0 else 0
             
             is_no_response_temp = False
             
             if has_200:
                 numeros_excluidos_200 += 1
-            elif pct_404 > 30:
+            elif pct_404_val > 30:
                 numeros_excluidos_404 += 1
             elif total < min_frequency:
                 numeros_con_frecuencia_insuficiente += 1
@@ -172,19 +185,32 @@ def analyze_cdr_chunked(
             num_days = len(data['days'])
             avg_daily_frequency = total / num_days if num_days > 0 else 0
 
-            results.append({
+            res_row = {
                 'e164': e164,
                 'first_date': data['first_date'].strftime('%Y-%m-%d'),
                 'last_date': data['last_date'].strftime('%Y-%m-%d'),
                 'avg_daily_frequency': round(avg_daily_frequency, 2),
                 'frequency': total,
-                'pct_404': round(pct_404, 2),
+                'pct_404': round(pct_404_val, 2),
                 'status': 'NO_RESPONSE_TEMP'
-            })
+            }
+            
+            # Add dynamic pct columns
+            for sc in sorted_sip_codes:
+                if sc == 404:
+                    continue
+                sc_count = sip_counts.get(sc, 0)
+                sc_pct = (sc_count / total * 100) if total > 0 else 0
+                res_row[f'pct_{sc}'] = round(sc_pct, 2)
+
+            results.append(res_row)
 
         # Write to CSV
         # Ensure columns are in requested order and headers are always present
-        cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'status']
+        base_cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'status']
+        dynamic_cols = [f'pct_{sc}' for sc in sorted_sip_codes if sc != 404]
+        cols = base_cols + dynamic_cols
+        
         df_results = pd.DataFrame(results, columns=cols)
         df_results.to_csv(output_path, index=False, sep=';')
 
