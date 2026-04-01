@@ -66,7 +66,7 @@ def analyze_cdr_chunked(
             progress_callback(30, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
 
         # We'll use a dictionary to accumulate stats per e164
-        # e164 -> [total_count, count_200, count_404]
+        # e164 -> {total, has_200, count_404, first_date, last_date, days}
         stats = {}
         
         rows_processed_pass2 = 0
@@ -75,6 +75,7 @@ def analyze_cdr_chunked(
             input_path, 
             sep=';', 
             usecols=['call_date', 'e164', 'sip_code'], 
+            dtype={'e164': str}, # Ensure e164 is treated as string
             chunksize=chunk_size,
             engine='c'
         ):
@@ -89,22 +90,43 @@ def analyze_cdr_chunked(
             
             if chunk.empty:
                 continue
+            
+            # Date only for daily frequency calculation
+            chunk['date_only'] = chunk['call_date'].dt.date
                 
             # Group by e164 in this chunk
             chunk_stats = chunk.groupby('e164').agg(
                 total=('sip_code', 'count'),
                 has_200=('sip_code', lambda x: (x == 200).any()),
-                count_404=('sip_code', lambda x: (x == 404).sum())
+                count_404=('sip_code', lambda x: (x == 404).sum()),
+                min_dt=('call_date', 'min'),
+                max_dt=('call_date', 'max'),
+                unique_days=('date_only', lambda x: set(x))
             )
             
             # Merge with global stats
             for e164, row in chunk_stats.iterrows():
                 if e164 not in stats:
-                    stats[e164] = {'total': 0, 'has_200': False, 'count_404': 0}
+                    stats[e164] = {
+                        'total': 0, 
+                        'has_200': False, 
+                        'count_404': 0, 
+                        'first_date': row['min_dt'], 
+                        'last_date': row['max_dt'],
+                        'days': row['unique_days']
+                    }
                 
-                stats[e164]['total'] += row['total']
-                stats[e164]['has_200'] = stats[e164]['has_200'] or row['has_200']
-                stats[e164]['count_404'] += row['count_404']
+                s = stats[e164]
+                s['total'] += row['total']
+                s['has_200'] = s['has_200'] or row['has_200']
+                s['count_404'] += row['count_404']
+                
+                if row['min_dt'] < s['first_date']:
+                    s['first_date'] = row['min_dt']
+                if row['max_dt'] > s['last_date']:
+                    s['last_date'] = row['max_dt']
+                
+                s['days'].update(row['unique_days'])
             
             if progress_callback:
                 # Pass 2 is 30% to 90%
@@ -141,22 +163,27 @@ def analyze_cdr_chunked(
                 is_no_response_temp = True
                 numeros_match += 1
             
-            if not is_no_response_temp and not (has_200 or pct_404 > 30 or total < min_frequency):
-                # This case shouldn't really happen with the logic above but for completeness
-                pass
-            
             if not is_no_response_temp:
                 numeros_no_match += 1
+                continue # Only include NO_RESPONSE_TEMP in final CSV
+
+            num_days = len(data['days'])
+            avg_daily_frequency = total / num_days if num_days > 0 else 0
 
             results.append({
                 'e164': e164,
+                'first_date': data['first_date'].strftime('%Y-%m-%d'),
+                'last_date': data['last_date'].strftime('%Y-%m-%d'),
+                'avg_daily_frequency': round(avg_daily_frequency, 2),
                 'frequency': total,
                 'pct_404': round(pct_404, 2),
-                'status': 'NO_RESPONSE_TEMP' if is_no_response_temp else 'OTHER'
+                'status': 'NO_RESPONSE_TEMP'
             })
 
         # Write to CSV
-        df_results = pd.DataFrame(results)
+        # Ensure columns are in requested order and headers are always present
+        cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'status']
+        df_results = pd.DataFrame(results, columns=cols)
         df_results.to_csv(output_path, index=False, sep=';')
 
         summary = {
