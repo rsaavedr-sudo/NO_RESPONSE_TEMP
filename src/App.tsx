@@ -13,16 +13,47 @@ import { ProgressBar } from './components/ProgressBar';
 import { StatsPanel } from './components/StatsPanel';
 import { DownloadButton } from './components/DownloadButton';
 import { ErrorAlert } from './components/ErrorAlert';
-import { startAnalysis, getDownloadUrl } from './api/client';
+import { startAnalysis, getDownloadUrl, API_BASE_URL, getJobStatus } from './api/client';
 import { JobStatus } from './types/api';
 
 const App: React.FC = () => {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const lastStatusRef = useRef<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [lastEndpoint, setLastEndpoint] = useState<string>('None');
+  const [debugInfo, setDebugInfo] = useState<{
+    jobId: string | null;
+    status: string | null;
+    lastError: string | null;
+    timestamp: string;
+  }>({ jobId: null, status: null, lastError: null, timestamp: new Date().toLocaleTimeString() });
+
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    lastStatusRef.current = jobStatus;
+  }, [jobStatus]);
+
+  const log = (prefix: string, message: string, data?: any) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const fullMessage = `[${prefix}] ${message}`;
+    console.log(`${timestamp} ${fullMessage}`, data || '');
+    setDebugInfo(prev => ({
+      ...prev,
+      timestamp,
+      jobId: activeJobId || prev.jobId,
+      status: jobStatus?.status || prev.status
+    }));
+  };
 
   const handleAnalyze = async (file: File, analysisDays: number, minFrequency: number) => {
+    log('analyze', 'iniciado', { fileName: file.name, size: file.size });
+    setLastEndpoint(`POST /analyze`);
+    
+    // Reset states
     setError(null);
+    setActiveJobId(null);
     setJobStatus({
       job_id: 'pending',
       status: 'queued',
@@ -33,38 +64,75 @@ const App: React.FC = () => {
 
     try {
       const { job_id } = await startAnalysis(file, analysisDays, minFrequency);
+      log('analyze', 'job_id recibido', job_id);
       
-      // Start listening for SSE updates
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-      const eventSource = new EventSource(`${API_BASE_URL}/jobs/${job_id}/stream`);
-      eventSourceRef.current = eventSource;
-
-      eventSource.addEventListener('update', (event) => {
-        const data = JSON.parse(event.data) as JobStatus;
-        setJobStatus(data);
-        
-        if (data.status === 'completed' || data.status === 'failed') {
-          eventSource.close();
-        }
-      });
-
-      eventSource.onerror = (err) => {
-        console.error('SSE Error:', err);
-        setError('Se perdió la conexión con el servidor de análisis.');
-        eventSource.close();
-      };
-
+      setActiveJobId(job_id);
+      setDebugInfo(prev => ({ ...prev, jobId: job_id, lastError: null }));
+      
+      // Start polling immediately
+      startPolling(job_id);
     } catch (err: any) {
-      console.error('Analysis Error:', err);
-      setError(err.response?.data?.detail || 'Error al iniciar el análisis. Verifica el archivo y los parámetros.');
+      const errorMsg = err.response?.data?.detail || err.message || 'Unknown error';
+      const status = err.response?.status;
+      const url = `${API_BASE_URL}/analyze`;
+      
+      log('analyze', 'upload failed', { 
+        url, 
+        status, 
+        errorMsg, 
+        isNetworkError: !err.response,
+        data: err.response?.data 
+      });
+      
+      setError(`Error (${status || 'Network'}): ${errorMsg}`);
+      setDebugInfo(prev => ({ ...prev, lastError: errorMsg }));
       setJobStatus(null);
     }
   };
 
+  const startPolling = (jobId: string) => {
+    log('polling', 'iniciado', { jobId });
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    
+    pollIntervalRef.current = setInterval(async () => {
+      const endpoint = `/jobs/${jobId}`;
+      setLastEndpoint(`GET ${endpoint}`);
+      
+      try {
+        const data = await getJobStatus(jobId);
+        log('polling', 'estado', { status: data.status, progress: data.progress_percent });
+        setJobStatus(data);
+        
+        if (data.status === 'completed') {
+          log('polling', 'completed', data);
+          setError(null);
+          log('download', 'enabled', getDownloadUrl(jobId));
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        } else if (data.status === 'failed') {
+          log('polling', 'failed', { error: data.error });
+          setError(data.error || 'Error en el análisis');
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        }
+      } catch (err: any) {
+        const errorMsg = err.response?.data?.detail || err.message;
+        log('polling', 'error', { errorMsg, status: err.response?.status });
+        
+        if (err.response?.status === 404) {
+          setError('Trabajo no encontrado');
+          setDebugInfo(prev => ({ ...prev, lastError: 'Job 404 Not Found' }));
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        } else {
+          setError('Error de conexión con el servidor');
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        }
+      }
+    }, 1500);
+  };
+
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
       }
     };
   }, []);
@@ -212,6 +280,34 @@ const App: React.FC = () => {
                   Filtrado automático de sip_code 200, exclusión por tasa de 404 y validación de frecuencia mínima configurable.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Debug Panel */}
+        <div className="bg-gray-900 rounded-2xl p-4 font-mono text-[10px] text-green-400 border border-gray-800 shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between mb-2 border-b border-gray-800 pb-2">
+            <span className="font-bold text-gray-500 uppercase tracking-widest">Debug Monitor</span>
+            <span className="text-gray-600">{debugInfo.timestamp}</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+            <div className="flex justify-between">
+              <span className="text-gray-500">JOB_ID:</span>
+              <span className="text-blue-400">{debugInfo.jobId || 'null'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">STATUS:</span>
+              <span className={debugInfo.status === 'completed' ? 'text-green-400' : 'text-yellow-400'}>
+                {debugInfo.status || 'idle'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">ENDPOINT:</span>
+              <span className="text-indigo-400">{lastEndpoint}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">LAST_ERR:</span>
+              <span className="text-red-400 truncate max-w-[200px]">{debugInfo.lastError || 'none'}</span>
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ percent, stage, messag
   const isCompleted = status === 'completed';
   const isFailed = status === 'failed';
   const isProcessing = status === 'processing' || status === 'queued';
+  const displayPercent = isCompleted ? 100 : percent;
 
   return (
     <div className="w-full space-y-4">
@@ -25,7 +26,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ percent, stage, messag
             {stage.replace('_', ' ')}
           </span>
         </div>
-        <span className="text-sm font-mono text-gray-500">{percent}%</span>
+        <span className="text-sm font-mono text-gray-500">{displayPercent}%</span>
       </div>
       
       <div className="relative h-4 w-full bg-gray-200 rounded-full overflow-hidden">
@@ -34,7 +35,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ percent, stage, messag
             isFailed ? 'bg-red-500' : isCompleted ? 'bg-green-500' : 'bg-blue-500'
           }`}
           initial={{ width: 0 }}
-          animate={{ width: `${percent}%` }}
+          animate={{ width: `${displayPercent}%` }}
           transition={{ duration: 0.5 }}
         />
       </div>

@@ -11,6 +11,7 @@ import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats
 from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs
+from .utils import to_json_safe
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -74,20 +75,23 @@ async def get_job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
+    # Sanitize job data for JSON serialization
+    safe_job = to_json_safe(job)
+    
     # Map stats to Pydantic model if exists
     stats = None
-    if job["stats"]:
-        stats = AnalysisStats(**job["stats"])
+    if safe_job["stats"]:
+        stats = AnalysisStats(**safe_job["stats"])
     
     return JobStatus(
-        job_id=job["job_id"],
-        status=job["status"],
-        progress_percent=job["progress_percent"],
-        stage=job["stage"],
-        message=job["message"],
+        job_id=safe_job["job_id"],
+        status=safe_job["status"],
+        progress_percent=safe_job["progress_percent"],
+        stage=safe_job["stage"],
+        message=safe_job["message"],
         stats=stats,
-        result_url=f"/download/{job_id}" if job["status"] == "completed" else None,
-        error=job["error"]
+        result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
+        error=safe_job["error"]
     )
 
 @app.get("/jobs/{job_id}/stream")
@@ -110,20 +114,23 @@ async def stream_job_status(job_id: str):
             # Only send update if something changed
             if job["progress_percent"] != last_progress or job["stage"] != last_stage or job["status"] in ["completed", "failed"]:
                 
+                # Sanitize job data for JSON serialization
+                safe_job = to_json_safe(job)
+                
                 # Map stats to dict if exists
                 stats_dict = None
-                if job["stats"]:
-                    stats_dict = job["stats"]
+                if safe_job["stats"]:
+                    stats_dict = safe_job["stats"]
                 
                 data = {
-                    "job_id": job["job_id"],
-                    "status": job["status"],
-                    "progress_percent": job["progress_percent"],
-                    "stage": job["stage"],
-                    "message": job["message"],
+                    "job_id": safe_job["job_id"],
+                    "status": safe_job["status"],
+                    "progress_percent": safe_job["progress_percent"],
+                    "stage": safe_job["stage"],
+                    "message": safe_job["message"],
                     "stats": stats_dict,
-                    "error": job["error"],
-                    "result_url": f"/download/{job_id}" if job["status"] == "completed" else None
+                    "error": safe_job["error"],
+                    "result_url": f"/download/{job_id}" if safe_job["status"] == "completed" else None
                 }
                 
                 yield {
@@ -131,10 +138,12 @@ async def stream_job_status(job_id: str):
                     "data": json.dumps(data)
                 }
                 
-                last_progress = job["progress_percent"]
-                last_stage = job["stage"]
+                last_progress = safe_job["progress_percent"]
+                last_stage = safe_job["stage"]
                 
-                if job["status"] in ["completed", "failed"]:
+                if safe_job["status"] in ["completed", "failed"]:
+                    # Small delay to ensure the client receives the last message before closing
+                    await asyncio.sleep(0.5)
                     break
             
             await asyncio.sleep(1) # Poll every second for changes to push to SSE

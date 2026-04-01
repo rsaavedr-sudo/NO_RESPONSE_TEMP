@@ -5,6 +5,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from .analyzer import analyze_cdr_chunked
+from .utils import to_json_safe
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def create_job() -> str:
 
 def update_job_progress(job_id: str, percent: int, stage: str, message: str):
     if job_id in jobs:
-        jobs[job_id]["progress_percent"] = percent
+        jobs[job_id]["progress_percent"] = to_json_safe(percent)
         jobs[job_id]["stage"] = stage
         jobs[job_id]["message"] = message
         if stage == "completed":
@@ -53,7 +54,7 @@ def set_job_error(job_id: str, error: str):
 def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
     if job_id in jobs:
         jobs[job_id]["status"] = "completed"
-        jobs[job_id]["stats"] = stats
+        jobs[job_id]["stats"] = to_json_safe(stats)
         jobs[job_id]["result_path"] = result_path
         jobs[job_id]["progress_percent"] = 100
         jobs[job_id]["stage"] = "completed"
