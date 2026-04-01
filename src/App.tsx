@@ -47,8 +47,9 @@ const App: React.FC = () => {
     }));
   };
 
-  const handleAnalyze = async (file: File, analysisDays: number, minFrequency: number) => {
-    log('analyze', 'iniciado', { fileName: file.name, size: file.size });
+  const handleAnalyze = async (files: File[], analysisDays: number, minFrequency: number) => {
+    const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+    log('analyze', 'iniciado', { files: files.length, totalSize });
     setLastEndpoint(`POST /analyze`);
     
     // Reset states
@@ -59,11 +60,11 @@ const App: React.FC = () => {
       status: 'queued',
       progress_percent: 0,
       stage: 'uploading',
-      message: 'Subiendo archivo al servidor...'
+      message: 'Subiendo archivos al servidor...'
     });
 
     try {
-      const { job_id } = await startAnalysis(file, analysisDays, minFrequency);
+      const { job_id } = await startAnalysis(files, analysisDays, minFrequency);
       log('analyze', 'job_id recibido', job_id);
       
       setActiveJobId(job_id);

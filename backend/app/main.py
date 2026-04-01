@@ -6,7 +6,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
-from typing import Optional
+from typing import List, Optional
 import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats
@@ -35,31 +35,41 @@ async def health():
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     analysis_days: int = Form(7),
     min_frequency: int = Form(5)
 ):
     """
-    Starts an asynchronous CDR analysis job.
+    Starts an asynchronous CDR analysis job with multiple files.
     """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+        
     job_id = create_job()
-    
-    # Save uploaded file to temp directory
-    input_filename = f"input_{job_id}.csv"
-    input_path = os.path.join(TEMP_DIR, input_filename)
+    input_paths = []
     
     try:
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        for i, file in enumerate(files):
+            input_filename = f"input_{job_id}_{i}.csv"
+            input_path = os.path.join(TEMP_DIR, input_filename)
+            input_paths.append(input_path)
+            
+            with open(input_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
     except Exception as e:
-        logger.error(f"Error saving uploaded file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Could not save file: {str(e)}")
+        logger.error(f"Error saving uploaded files: {str(e)}")
+        # Cleanup any files already saved
+        for path in input_paths:
+            if os.path.exists(path):
+                os.remove(path)
+        raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
     
     # Start background task
     background_tasks.add_task(
         run_analysis_task, 
         job_id=job_id, 
-        input_path=input_path, 
+        input_paths=input_paths, 
         analysis_days=analysis_days, 
         min_frequency=min_frequency
     )

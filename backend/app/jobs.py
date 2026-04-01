@@ -63,7 +63,7 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return jobs.get(job_id)
 
-def run_analysis_task(job_id: str, input_path: str, analysis_days: int, min_frequency: int):
+def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, min_frequency: int):
     try:
         output_filename = f"result_{job_id}.csv"
         output_path = os.path.join(TEMP_DIR, output_filename)
@@ -72,7 +72,7 @@ def run_analysis_task(job_id: str, input_path: str, analysis_days: int, min_freq
             update_job_progress(job_id, percent, stage, message)
             
         stats = analyze_cdr_chunked(
-            input_path=input_path,
+            input_paths=input_paths,
             output_path=output_path,
             analysis_days=analysis_days,
             min_frequency=min_frequency,
@@ -85,9 +85,13 @@ def run_analysis_task(job_id: str, input_path: str, analysis_days: int, min_freq
         logger.exception(f"Error processing job {job_id}")
         set_job_error(job_id, str(e))
     finally:
-        # We keep the input file for now, but we could delete it if needed
-        # os.remove(input_path)
-        pass
+        # Clean up input files
+        for path in input_paths:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
 
 def cleanup_old_jobs(hours: int = 24):
     """

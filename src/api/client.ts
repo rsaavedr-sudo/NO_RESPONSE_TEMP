@@ -32,9 +32,11 @@ export interface JobStatus {
   error?: string;
 }
 
-export const startAnalysis = async (file: File, analysisDays: number, minFrequency: number) => {
+export const startAnalysis = async (files: File[], analysisDays: number, minFrequency: number) => {
   const formData = new FormData();
-  formData.append('file', file);
+  files.forEach(file => {
+    formData.append('files', file);
+  });
   formData.append('analysis_days', analysisDays.toString());
   formData.append('min_frequency', minFrequency.toString());
 
