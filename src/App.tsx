@@ -1,254 +1,238 @@
-import React, { useState } from 'react';
+/// <reference types="vite/client" />
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Upload, 
-  Settings, 
-  Download, 
-  AlertCircle, 
-  Loader2,
-  BarChart3,
-  Info
+  BarChart3, 
+  ShieldCheck, 
+  History, 
+  Zap,
+  FileSpreadsheet
 } from 'lucide-react';
-import axios from 'axios';
-import { AnalysisResult } from './types';
+import { motion, AnimatePresence } from 'motion/react';
+import { UploadForm } from './components/UploadForm';
+import { ProgressBar } from './components/ProgressBar';
+import { StatsPanel } from './components/StatsPanel';
+import { DownloadButton } from './components/DownloadButton';
+import { ErrorAlert } from './components/ErrorAlert';
+import { startAnalysis, getDownloadUrl } from './api/client';
+import { JobStatus } from './types/api';
 
-function App() {
-  const [file, setFile] = useState<File | null>(null);
-  const [analysisDays, setAnalysisDays] = useState<number>(30);
-  const [minFrequency, setMinFrequency] = useState<number>(5);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
+const App: React.FC = () => {
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setError(null);
-      setResult(null);
-      setJobId(null);
-    }
-  };
-
-  const handleProcess = async () => {
-    if (!file) return;
-
-    setIsProcessing(true);
+  const handleAnalyze = async (file: File, analysisDays: number, minFrequency: number) => {
     setError(null);
-    setResult(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('analysis_days', analysisDays.toString());
-    formData.append('min_frequency', minFrequency.toString());
+    setJobStatus({
+      job_id: 'pending',
+      status: 'queued',
+      progress_percent: 0,
+      stage: 'uploading',
+      message: 'Subiendo archivo al servidor...'
+    });
 
     try {
-      const response = await axios.post('/api/analyze', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const { job_id } = await startAnalysis(file, analysisDays, minFrequency);
+      
+      // Start listening for SSE updates
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const eventSource = new EventSource(`${API_BASE_URL}/jobs/${job_id}/stream`);
+      eventSourceRef.current = eventSource;
+
+      eventSource.addEventListener('update', (event) => {
+        const data = JSON.parse(event.data) as JobStatus;
+        setJobStatus(data);
+        
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+        }
       });
 
-      setResult(response.data.stats);
-      setJobId(response.data.job_id);
+      eventSource.onerror = (err) => {
+        console.error('SSE Error:', err);
+        setError('Se perdió la conexión con el servidor de análisis.');
+        eventSource.close();
+      };
+
     } catch (err: any) {
-      console.error('Analysis error:', err);
-      setError(err.response?.data?.error || err.message || 'Error al procesar el archivo');
-    } finally {
-      setIsProcessing(false);
+      console.error('Analysis Error:', err);
+      setError(err.response?.data?.detail || 'Error al iniciar el análisis. Verifica el archivo y los parámetros.');
+      setJobStatus(null);
     }
   };
 
-  const handleDownload = () => {
-    if (!jobId) return;
-    window.location.href = `/api/download/${jobId}`;
-  };
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#1a1a1a] text-gray-100 font-sans">
-      {/* Logo Section */}
-      <div className="absolute top-6 left-8 flex items-center gap-2">
-        <div className="w-10 h-10 bg-[#00ff00] rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(0,255,0,0.3)]">
-          <span className="text-[#1a1a1a] font-bold text-xl">T</span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xl font-bold tracking-tight text-white leading-none">T-Zero</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium tracking-[0.2em] text-[#00ff00] uppercase">Technology</span>
-            <span className="text-[10px] font-mono text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded">v2.0.0</span>
+    <div className="min-h-screen bg-[#f8fafc] text-gray-900 font-sans selection:bg-blue-100">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2.5 rounded-xl shadow-lg shadow-blue-200">
+              <Zap className="w-7 h-7 text-white fill-white/20" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-2xl font-black tracking-tighter text-gray-900 leading-none">T-ZERO</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold tracking-[0.2em] text-blue-600 uppercase">CDR Analyzer</span>
+                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v2.0.0</span>
+              </div>
+            </div>
           </div>
+          
+          <nav className="hidden md:flex items-center gap-8">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-blue-600 cursor-pointer transition-colors">
+              <ShieldCheck className="w-4 h-4" />
+              Seguridad Enterprise
+            </div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-blue-600 cursor-pointer transition-colors">
+              <History className="w-4 h-4" />
+              Historial
+            </div>
+          </nav>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-24">
-        <header className="mb-12 text-center">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            Análisis de CDR Masivo
-          </h1>
-          <p className="text-gray-400 max-w-2xl mx-auto">
-            Procesamiento de archivos de gran escala (millones de registros) para la detección de números sin respuesta temporal.
-          </p>
-        </header>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+        {/* Hero Section */}
+        <section className="text-center space-y-4">
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-4xl md:text-5xl font-black tracking-tight text-gray-900"
+          >
+            Análisis Masivo de <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">CDR</span>
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-lg text-gray-600 max-w-2xl mx-auto"
+          >
+            Procesa millones de registros en segundos. Identifica patrones de NO_RESPONSE_TEMP con precisión quirúrgica y arquitectura escalable.
+          </motion.p>
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Configuration Panel */}
-          <div className="md:col-span-1 space-y-6">
-            <div className="bg-[#242424] p-6 rounded-2xl border border-gray-800 shadow-xl">
-              <div className="flex items-center gap-2 mb-6 text-[#00ff00]">
-                <Settings size={20} />
-                <h2 className="font-semibold uppercase tracking-wider text-sm">Configuración</h2>
+        <ErrorAlert message={error || jobStatus?.error || ''} onClose={() => setError(null)} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          {/* Left Column: Form & Progress */}
+          <div className="lg:col-span-5 space-y-8">
+            <div className="bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 border border-gray-100">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-2 bg-blue-50 rounded-lg">
+                  <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Configuración</h2>
               </div>
               
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                    Ventana de Análisis (Días)
-                  </label>
-                  <input
-                    type="number"
-                    value={analysisDays}
-                    onChange={(e) => setAnalysisDays(parseInt(e.target.value) || 1)}
-                    className="w-full bg-[#1a1a1a] border border-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:border-[#00ff00] transition-colors"
-                    min="1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase mb-2">
-                    Frecuencia Mínima
-                  </label>
-                  <input
-                    type="number"
-                    value={minFrequency}
-                    onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
-                    className="w-full bg-[#1a1a1a] border border-gray-800 rounded-lg px-4 py-2 focus:outline-none focus:border-[#00ff00] transition-colors"
-                    min="1"
-                  />
-                </div>
-              </div>
+              <UploadForm 
+                onAnalyze={handleAnalyze} 
+                disabled={jobStatus?.status === 'processing' || jobStatus?.status === 'queued'} 
+              />
             </div>
 
-            <div className="bg-[#242424] p-6 rounded-2xl border border-gray-800 shadow-xl">
-              <div className="flex items-center gap-2 mb-4 text-gray-400">
-                <Info size={18} />
-                <h3 className="text-sm font-medium">Reglas de Negocio</h3>
-              </div>
-              <ul className="text-xs text-gray-500 space-y-2 list-disc pl-4">
-                <li>Excluye números con algún sip_code = 200</li>
-                <li>Excluye números con &gt;30% de sip_code = 404</li>
-                <li>Requiere frecuencia mínima de {minFrequency} en los últimos {analysisDays} días</li>
-              </ul>
-            </div>
+            <AnimatePresence>
+              {jobStatus && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 border border-gray-100"
+                >
+                  <ProgressBar 
+                    percent={jobStatus.progress_percent} 
+                    stage={jobStatus.stage} 
+                    message={jobStatus.message}
+                    status={jobStatus.status}
+                  />
+                  
+                  {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-8"
+                    >
+                      <DownloadButton 
+                        url={getDownloadUrl(jobStatus.job_id)} 
+                        filename={`analisis_cdr_${jobStatus.job_id}.csv`} 
+                      />
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Main Action Area */}
-          <div className="md:col-span-2 space-y-8">
-            <div 
-              className={`relative border-2 border-dashed rounded-3xl p-12 text-center transition-all duration-300 ${
-                file ? 'border-[#00ff00] bg-[#00ff00]/5' : 'border-gray-800 hover:border-gray-700 bg-[#242424]'
-              }`}
-            >
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <div className="flex flex-col items-center">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-                  file ? 'bg-[#00ff00] text-[#1a1a1a]' : 'bg-[#1a1a1a] text-gray-600'
-                }`}>
-                  <Upload size={32} />
+          {/* Right Column: Stats & Info */}
+          <div className="lg:col-span-7 space-y-8">
+            <div className="bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 border border-gray-100 min-h-[400px]">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 rounded-lg">
+                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Estadísticas del Análisis</h2>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">
-                  {file ? file.name : 'Seleccionar archivo CSV'}
-                </h3>
-                <p className="text-gray-500 text-sm">
-                  {file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : 'Arrastra tu archivo aquí o haz clic para buscar'}
+                {jobStatus?.status === 'processing' && (
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full animate-pulse">
+                    PROCESANDO...
+                  </span>
+                )}
+              </div>
+
+              {jobStatus?.stats ? (
+                <StatsPanel stats={jobStatus.stats} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400 space-y-4">
+                  <BarChart3 className="w-16 h-16 opacity-20" />
+                  <p className="text-sm font-medium">Inicia un análisis para ver los resultados aquí.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Info Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-6 bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl text-white">
+                <h3 className="text-lg font-bold mb-2">Arquitectura Backend</h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  Procesamiento por bloques (chunks) optimizado para archivos de más de 40 millones de filas sin saturar la memoria.
+                </p>
+              </div>
+              <div className="p-6 bg-blue-600 rounded-3xl text-white">
+                <h3 className="text-lg font-bold mb-2">Reglas de Negocio</h3>
+                <p className="text-sm text-blue-100 leading-relaxed">
+                  Filtrado automático de sip_code 200, exclusión por tasa de 404 y validación de frecuencia mínima configurable.
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={handleProcess}
-              disabled={!file || isProcessing}
-              className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 ${
-                !file || isProcessing
-                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                  : 'bg-[#00ff00] text-[#1a1a1a] hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(0,255,0,0.2)]'
-              }`}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  Procesando en Servidor...
-                </>
-              ) : (
-                <>
-                  <BarChart3 size={24} />
-                  Iniciar Análisis
-                </>
-              )}
-            </button>
-
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-xl flex items-start gap-3 text-red-400">
-                <AlertCircle className="shrink-0 mt-0.5" />
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
-            {result && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <StatCard label="Total Registros" value={result.total_registros.toLocaleString()} />
-                  <StatCard label="Números Únicos" value={result.total_numeros_unicos.toLocaleString()} />
-                  <StatCard label="Match (NO_RESPONSE_TEMP)" value={result.numeros_match.toLocaleString()} highlight />
-                  <StatCard label="No Match" value={result.numeros_no_match.toLocaleString()} />
-                </div>
-
-                <div className="bg-[#242424] p-6 rounded-2xl border border-gray-800">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
-                    <AlertCircle size={16} />
-                    Detalle de Exclusiones
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-                    <ExclusionItem label="SIP 200 Detectado" value={result.numeros_excluidos_200} />
-                    <ExclusionItem label="SIP 404 > 30%" value={result.numeros_excluidos_404} />
-                    <ExclusionItem label="Frecuencia Insuficiente" value={result.numeros_con_frecuencia_insuficiente} />
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleDownload}
-                  className="w-full py-4 bg-white text-[#1a1a1a] rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
-                >
-                  <Download size={20} />
-                  Descargar Resultados Completos (CSV)
-                </button>
-              </div>
-            )}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
+      </main>
 
-function StatCard({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={`p-4 rounded-xl border ${highlight ? 'border-[#00ff00] bg-[#00ff00]/5' : 'border-gray-800 bg-[#242424]'}`}>
-      <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">{label}</p>
-      <p className={`text-xl font-bold ${highlight ? 'text-[#00ff00]' : 'text-white'}`}>{value}</p>
+      <footer className="bg-white border-t border-gray-200 py-10 mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-3 opacity-50">
+            <Zap className="w-5 h-5 text-gray-900" />
+            <span className="text-sm font-bold tracking-tighter">T-ZERO TECHNOLOGY</span>
+          </div>
+          <p className="text-sm text-gray-500">© 2026 T-Zero Technology. Todos los derechos reservados.</p>
+          <div className="flex gap-6 text-sm font-medium text-gray-400">
+            <a href="#" className="hover:text-blue-600 transition-colors">Documentación</a>
+            <a href="#" className="hover:text-blue-600 transition-colors">Soporte</a>
+            <a href="#" className="hover:text-blue-600 transition-colors">API</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
-}
-
-function ExclusionItem({ label, value }: { label: string; value: number }) {
-  return (
-    <div>
-      <p className="text-2xl font-bold text-white mb-1">{value.toLocaleString()}</p>
-      <p className="text-xs text-gray-500">{label}</p>
-    </div>
-  );
-}
+};
 
 export default App;

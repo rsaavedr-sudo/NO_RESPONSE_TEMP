@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional, Dict, Any
 
 class AnalysisStats(BaseModel):
     total_registros: int
@@ -11,6 +11,16 @@ class AnalysisStats(BaseModel):
     numeros_no_match: int
     filas_invalidas_descartadas: int
 
-class AnalysisResponse(BaseModel):
+class JobStatus(BaseModel):
     job_id: str
-    stats: AnalysisStats
+    status: str
+    progress_percent: int
+    stage: str
+    message: str
+    stats: Optional[AnalysisStats] = None
+    result_url: Optional[str] = None
+    error: Optional[str] = None
+
+class AnalyzeResponse(BaseModel):
+    job_id: str
+    status: str

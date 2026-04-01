@@ -1,118 +1,182 @@
 import pandas as pd
 import os
-import uuid
 from datetime import timedelta
+import logging
+from typing import Dict, Any, Optional
 
-def analyze_cdr_file(file_path, analysis_days, min_frequency):
-    # Pass 1: Find max_date and count invalid rows
+logger = logging.getLogger(__name__)
+
+def analyze_cdr_chunked(
+    input_path: str,
+    output_path: str,
+    analysis_days: int,
+    min_frequency: int,
+    chunk_size: int = 500000,
+    progress_callback = None
+) -> Dict[str, Any]:
+    """
+    Analyzes CDR CSV file in chunks to handle large files.
+    """
+    
+    # Pass 1: Find max_date and basic stats
+    if progress_callback:
+        progress_callback(0, "scanning_dates", "Escaneando fechas y validando archivo...")
+    
     max_date = None
-    invalid_rows = 0
     total_rows = 0
+    invalid_rows = 0
     
-    # Use chunksize to process large files
-    # We use sep=';' as requested
-    for chunk in pd.read_csv(file_path, sep=';', chunksize=100000, on_bad_lines='skip'):
-        total_rows += len(chunk)
-        chunk['call_date_dt'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-        invalid_rows += chunk['call_date_dt'].isna().sum()
-        
-        chunk_max = chunk['call_date_dt'].max()
-        if pd.notna(chunk_max):
-            if max_date is None or chunk_max > max_date:
-                max_date = chunk_max
-                
-    if max_date is None:
-        return None, None
-        
-    cutoff_date = max_date - timedelta(days=analysis_days)
+    # We need to know the total size for progress
+    file_size = os.path.getsize(input_path)
+    bytes_processed = 0
     
-    # Pass 2: Accumulate stats per e164
-    # stats = { e164: { total: int, c404: int, has200: bool, freqInWindow: int } }
-    stats = {}
-    
-    for chunk in pd.read_csv(file_path, sep=';', chunksize=100000, on_bad_lines='skip'):
-        chunk['call_date_dt'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-        chunk = chunk.dropna(subset=['call_date_dt'])
-        
-        # Group chunk to reduce iterations
-        # Ensure sip_code is treated as string for comparison
-        chunk['sip_code_str'] = chunk['sip_code'].astype(str).str.strip()
-        chunk['is_200'] = chunk['sip_code_str'] == '200'
-        chunk['is_404'] = chunk['sip_code_str'] == '404'
-        chunk['in_window'] = chunk['call_date_dt'] >= cutoff_date
-        
-        grouped = chunk.groupby('e164').agg({
-            'is_200': 'any',
-            'is_404': 'sum',
-            'in_window': 'sum',
-            'call_date': 'count'
-        })
-        
-        for e164, row in grouped.iterrows():
-            e164_str = str(e164)
-            if e164_str not in stats:
-                stats[e164_str] = {'total': 0, 'c404': 0, 'has200': False, 'freqInWindow': 0}
+    try:
+        # Pass 1
+        for chunk in pd.read_csv(
+            input_path, 
+            sep=';', 
+            usecols=['call_date'], 
+            chunksize=chunk_size,
+            on_bad_lines='warn',
+            engine='c'
+        ):
+            total_rows += len(chunk)
+            chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
             
-            s = stats[e164_str]
-            s['total'] += row['call_date']
-            s['c404'] += row['is_404']
-            s['has200'] = s['has200'] or row['is_200']
-            s['freqInWindow'] += row['in_window']
-                
-    # Final classification and result generation
-    results_list = []
-    total_unique = len(stats)
-    excl_200 = 0
-    excl_404 = 0
-    insufficient_freq = 0
-    match_count = 0
-    no_match_count = 0
-    
-    for e164, s in stats.items():
-        pct_404 = s['c404'] / s['total'] if s['total'] > 0 else 0
-        
-        # Classification logic
-        # 1. No sip_code = 200
-        # 2. No more than 30% sip_code = 404
-        # 3. Frequency in window >= min_frequency
-        is_match = not s['has200'] and pct_404 <= 0.30 and s['freqInWindow'] >= min_frequency
-        
-        status = "NO_RESPONSE_TEMP" if is_match else "OTHER"
-        
-        if is_match:
-            match_count += 1
-        else:
-            # Hierarchy of exclusion for stats
-            if s['has200']: 
-                excl_200 += 1
-            elif pct_404 > 0.30: 
-                excl_404 += 1
-            elif s['freqInWindow'] < min_frequency: 
-                insufficient_freq += 1
-            no_match_count += 1
+            chunk_invalid = chunk['call_date'].isna().sum()
+            invalid_rows += chunk_invalid
             
-        results_list.append({
-            'e164': e164,
-            'frequency': s['freqInWindow'],
-            'pct_404': f"{pct_404*100:.2f}%",
-            'status': status
-        })
+            current_max = chunk['call_date'].max()
+            if max_date is None or (current_max is not None and current_max > max_date):
+                max_date = current_max
+            
+            # Update progress (approximate based on rows for pass 1)
+            # Pass 1 is roughly 30% of the work
+            if progress_callback:
+                progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
+
+        if max_date is None:
+            raise ValueError("No se encontraron fechas válidas en el archivo.")
+
+        start_date = max_date - timedelta(days=analysis_days)
+        logger.info(f"Max date: {max_date}, Start date: {start_date}")
+
+        # Pass 2: Aggregate metrics
+        if progress_callback:
+            progress_callback(30, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
+
+        # We'll use a dictionary to accumulate stats per e164
+        # e164 -> [total_count, count_200, count_404]
+        stats = {}
         
-    summary = {
-        'total_registros': total_rows,
-        'total_numeros_unicos': total_unique,
-        'numeros_excluidos_200': excl_200,
-        'numeros_excluidos_404': excl_404,
-        'numeros_con_frecuencia_insuficiente': insufficient_freq,
-        'numeros_match': match_count,
-        'numeros_no_match': no_match_count,
-        'filas_invalidas_descartadas': int(invalid_rows)
-    }
-    
-    # Save to CSV
-    job_id = str(uuid.uuid4())
-    output_path = f"temp/results_{job_id}.csv"
-    os.makedirs("temp", exist_ok=True)
-    pd.DataFrame(results_list).to_csv(output_path, index=False, sep=';')
-    
-    return summary, job_id
+        rows_processed_pass2 = 0
+        
+        for chunk in pd.read_csv(
+            input_path, 
+            sep=';', 
+            usecols=['call_date', 'e164', 'sip_code'], 
+            chunksize=chunk_size,
+            engine='c'
+        ):
+            rows_processed_pass2 += len(chunk)
+            
+            # Basic cleaning
+            chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+            chunk = chunk.dropna(subset=['call_date', 'e164'])
+            
+            # Filter by window
+            chunk = chunk[chunk['call_date'] >= start_date]
+            
+            if chunk.empty:
+                continue
+                
+            # Group by e164 in this chunk
+            chunk_stats = chunk.groupby('e164').agg(
+                total=('sip_code', 'count'),
+                has_200=('sip_code', lambda x: (x == 200).any()),
+                count_404=('sip_code', lambda x: (x == 404).sum())
+            )
+            
+            # Merge with global stats
+            for e164, row in chunk_stats.iterrows():
+                if e164 not in stats:
+                    stats[e164] = {'total': 0, 'has_200': False, 'count_404': 0}
+                
+                stats[e164]['total'] += row['total']
+                stats[e164]['has_200'] = stats[e164]['has_200'] or row['has_200']
+                stats[e164]['count_404'] += row['count_404']
+            
+            if progress_callback:
+                # Pass 2 is 30% to 90%
+                p = 30 + int((rows_processed_pass2 / total_rows) * 60)
+                progress_callback(p, "processing_chunks", f"Analizando registros... {rows_processed_pass2}/{total_rows}")
+
+        # Final Classification and Output Generation
+        if progress_callback:
+            progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...")
+
+        results = []
+        total_numeros_unicos = len(stats)
+        numeros_excluidos_200 = 0
+        numeros_excluidos_404 = 0
+        numeros_con_frecuencia_insuficiente = 0
+        numeros_match = 0
+        numeros_no_match = 0
+
+        for e164, data in stats.items():
+            total = data['total']
+            has_200 = data['has_200']
+            count_404 = data['count_404']
+            pct_404 = (count_404 / total * 100) if total > 0 else 0
+            
+            is_no_response_temp = False
+            
+            if has_200:
+                numeros_excluidos_200 += 1
+            elif pct_404 > 30:
+                numeros_excluidos_404 += 1
+            elif total < min_frequency:
+                numeros_con_frecuencia_insuficiente += 1
+            else:
+                is_no_response_temp = True
+                numeros_match += 1
+            
+            if not is_no_response_temp and not (has_200 or pct_404 > 30 or total < min_frequency):
+                # This case shouldn't really happen with the logic above but for completeness
+                pass
+            
+            if not is_no_response_temp:
+                numeros_no_match += 1
+
+            results.append({
+                'e164': e164,
+                'frequency': total,
+                'pct_404': round(pct_404, 2),
+                'status': 'NO_RESPONSE_TEMP' if is_no_response_temp else 'OTHER'
+            })
+
+        # Write to CSV
+        df_results = pd.DataFrame(results)
+        df_results.to_csv(output_path, index=False, sep=';')
+
+        summary = {
+            'total_registros': total_rows,
+            'total_numeros_unicos': total_numeros_unicos,
+            'numeros_excluidos_200': numeros_excluidos_200,
+            'numeros_excluidos_404': numeros_excluidos_404,
+            'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
+            'numeros_match': numeros_match,
+            'numeros_no_match': numeros_no_match,
+            'filas_invalidas_descartadas': invalid_rows
+        }
+
+        if progress_callback:
+            progress_callback(100, "completed", "Análisis completado exitosamente.")
+
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error in analyzer: {str(e)}")
+        if progress_callback:
+            progress_callback(0, "failed", f"Error: {str(e)}")
+        raise e
