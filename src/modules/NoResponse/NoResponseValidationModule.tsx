@@ -7,7 +7,8 @@ import { DownloadButton } from '../../components/DownloadButton';
 import { ErrorAlert } from '../../components/ErrorAlert';
 import { ValidationStatsPanel } from '../../components/ValidationStatsPanel';
 import { ValidationPieChart } from '../../components/ValidationPieChart';
-import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
+import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
 
 interface NoResponseValidationModuleProps {
@@ -139,11 +140,21 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                   status={jobStatus.status}
                 />
                 {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
-                  <div className="mt-8">
+                  <div className="mt-8 space-y-3">
                     <DownloadButton 
                       url={getDownloadUrl(jobStatus.job_id)} 
-                      filename={`validacion_modelo_${jobStatus.job_id}.csv`} 
+                      filename={`resumen_validacion_${jobStatus.job_id}.csv`} 
+                      label="Descargar Resumen (CSV)"
                     />
+                    {jobStatus.detailed_result_url && (
+                      <div className="pt-2">
+                        <DownloadButton 
+                          url={getDetailedDownloadUrl(jobStatus.job_id)} 
+                          filename={`detalle_cdr_${jobStatus.job_id}.csv`}
+                          variant="secondary"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -176,6 +187,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                 tp={jobStatus.stats.tp_count || 0} 
                 fp={jobStatus.stats.fp_count || 0} 
               />
+              {activeJobId && jobStatus.status === 'completed' && (
+                <MatchedRecordsTable jobId={activeJobId} />
+              )}
             </>
           ) : (
             <div className="bg-white p-8 rounded-3xl shadow-xl shadow-indigo-900/5 border border-gray-100 flex flex-col items-center justify-center h-[600px] text-gray-400 space-y-4">

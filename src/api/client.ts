@@ -63,3 +63,14 @@ export const getJobStatus = async (jobId: string) => {
 export const getDownloadUrl = (jobId: string) => {
   return `${API_BASE_URL}/download/${jobId}`;
 };
+
+export const getDetailedDownloadUrl = (jobId: string) => {
+  return `${API_BASE_URL}/download_detailed/${jobId}`;
+};
+
+export const getPreview = async (jobId: string, type: 'summary' | 'detailed' = 'summary', limit: number = 100) => {
+  const response = await axios.get(`${API_BASE_URL}/preview/${jobId}`, {
+    params: { type, limit }
+  });
+  return response.data;
+};

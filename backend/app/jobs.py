@@ -80,6 +80,14 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["stats"] = to_json_safe(stats)
         jobs[job_id]["result_path"] = result_path
+        
+        # Check if detailed result exists
+        detailed_path = result_path.replace(".csv", "_detailed.csv")
+        if os.path.exists(detailed_path):
+            jobs[job_id]["detailed_result_path"] = detailed_path
+        else:
+            jobs[job_id]["detailed_result_path"] = None
+
         jobs[job_id]["progress_percent"] = 100
         jobs[job_id]["stage"] = "completed"
         jobs[job_id]["message"] = "Análisis completado exitosamente."

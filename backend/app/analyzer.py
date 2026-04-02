@@ -589,11 +589,6 @@ def analyze_no_response_validation(
         tp = 0 # True Positive: Predicted NO_RESPONSE, Reality NO_RESPONSE (no SIP 200)
         fp = 0 # False Positive: Predicted NO_RESPONSE, Reality RESPONDE (has SIP 200)
         
-        # We only count numbers that appeared in the CDR window? 
-        # Or all numbers in the target list?
-        # The prompt says: "Para cada número... Si el número tiene... -> RESPONDE; Si NO tiene... -> NO RESPONDE"
-        # This implies we consider all numbers in the target list.
-        
         for num, has_200 in results.items():
             if has_200:
                 fp += 1
@@ -612,12 +607,49 @@ def analyze_no_response_validation(
             'error_rate': round(error_rate, 2),
             'total_analizados': total,
             'pct_con_respuesta': round(pct_con_respuesta, 2),
-            'filas_invalidas_descartadas': 0, # Not applicable here
+            'filas_invalidas_descartadas': 0,
             'first_date': start_date.strftime('%Y-%m-%d'),
             'last_date': max_date.strftime('%Y-%m-%d')
         }
 
-        # Save results table for download
+        # Pass 3: Extract detailed CDR matches
+        if progress_callback:
+            progress_callback(90, "saving_details", "Generando detalle de registros coincidentes...")
+
+        detailed_output_path = output_path.replace(".csv", "_detailed.csv")
+        first_chunk = True
+        
+        for cdr_path in cdr_paths:
+            for chunk in pd.read_csv(
+                cdr_path, 
+                sep=';', 
+                dtype={'e164': str},
+                chunksize=chunk_size
+            ):
+                if check_cancellation: check_cancellation()
+                
+                # Filter chunk to only include target numbers
+                matched_chunk = chunk[chunk['e164'].isin(target_numbers)].copy()
+                
+                if not matched_chunk.empty:
+                    # Add auxiliary columns
+                    matched_chunk['classification_result'] = matched_chunk['e164'].map(
+                        lambda x: 'FP' if results.get(x) else 'TP'
+                    )
+                    matched_chunk['has_sip_200'] = matched_chunk['e164'].map(
+                        lambda x: 'YES' if results.get(x) else 'NO'
+                    )
+                    
+                    matched_chunk.to_csv(
+                        detailed_output_path, 
+                        mode='a' if not first_chunk else 'w', 
+                        index=False, 
+                        sep=';',
+                        header=first_chunk
+                    )
+                    first_chunk = False
+
+        # Save summary results table as well
         results_list = []
         for num, has_200 in results.items():
             results_list.append({

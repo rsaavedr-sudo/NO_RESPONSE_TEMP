@@ -103,8 +103,49 @@ async def get_job_status(job_id: str):
         message=safe_job["message"],
         stats=stats,
         result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
+        detailed_result_url=f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
         error=safe_job["error"]
     )
+
+@app.get("/download_detailed/{job_id}")
+async def download_detailed_result(job_id: str):
+    """
+    Downloads the detailed result CSV for a completed job.
+    """
+    job = get_job(job_id)
+    if not job or job["status"] != "completed":
+        raise HTTPException(status_code=404, detail="Result not found or job not completed")
+    
+    detailed_path = job.get("detailed_result_path")
+    if not detailed_path or not os.path.exists(detailed_path):
+        raise HTTPException(status_code=404, detail="Detailed result file missing")
+    
+    return FileResponse(
+        path=detailed_path,
+        filename=f"detalle_cdr_{job_id}.csv",
+        media_type="text/csv"
+    )
+
+@app.get("/preview/{job_id}")
+async def preview_result(job_id: str, type: str = "summary", limit: int = 100):
+    """
+    Returns a preview (first N rows) of the result CSV.
+    """
+    job = get_job(job_id)
+    if not job or job["status"] != "completed":
+        raise HTTPException(status_code=404, detail="Result not found or job not completed")
+    
+    path = job["result_path"] if type == "summary" else job.get("detailed_result_path")
+    
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Result file missing")
+    
+    try:
+        df = pd.read_csv(path, sep=';', nrows=limit)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        logger.error(f"Error reading preview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading preview: {str(e)}")
 
 @app.post("/jobs/{job_id}/cancel")
 async def cancel_analysis(job_id: str):

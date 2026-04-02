@@ -47,6 +47,7 @@ class JobStatus(BaseModel):
     message: str
     stats: Optional[AnalysisStats] = None
     result_url: Optional[str] = None
+    detailed_result_url: Optional[str] = None
     error: Optional[str] = None
 
 class AnalyzeResponse(BaseModel):
