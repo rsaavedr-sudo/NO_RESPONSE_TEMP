@@ -13,6 +13,8 @@ class AnalysisStats(BaseModel):
     # Pie chart specific fields
     numeros_con_no_response: int
     numeros_sin_no_response: int
+    first_date: Optional[str] = None
+    last_date: Optional[str] = None
 
 class JobStatus(BaseModel):
     job_id: str

@@ -7,6 +7,7 @@ import { StatsPanel } from '../../components/StatsPanel';
 import { DownloadButton } from '../../components/DownloadButton';
 import { ErrorAlert } from '../../components/ErrorAlert';
 import { NoResponsePieChart } from '../../components/NoResponsePieChart';
+import { AnalysisCriteria } from '../../components/AnalysisCriteria';
 import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
 
@@ -149,6 +150,8 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
         </div>
 
         <div className="lg:col-span-7 space-y-8">
+          <AnalysisCriteria stats={jobStatus?.stats} />
+          
           <div className="bg-white p-8 rounded-3xl shadow-xl shadow-blue-900/5 border border-gray-100 min-h-[400px]">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">

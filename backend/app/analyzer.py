@@ -163,6 +163,8 @@ def analyze_cdr_chunked(
         numeros_no_match = 0
         numeros_con_no_response = 0
         numeros_sin_no_response = 0
+        global_first_date = None
+        global_last_date = None
 
         # Sort sip codes for consistent column order
         sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
@@ -177,6 +179,12 @@ def analyze_cdr_chunked(
                 numeros_con_no_response += 1
             else:
                 numeros_sin_no_response += 1
+
+            # Track global date range
+            if global_first_date is None or data['first_date'] < global_first_date:
+                global_first_date = data['first_date']
+            if global_last_date is None or data['last_date'] > global_last_date:
+                global_last_date = data['last_date']
 
             has_200 = 200 in sip_counts
             count_404 = sip_counts.get(404, 0)
@@ -240,7 +248,9 @@ def analyze_cdr_chunked(
             'numeros_no_match': numeros_no_match,
             'filas_invalidas_descartadas': invalid_rows,
             'numeros_con_no_response': numeros_con_no_response,
-            'numeros_sin_no_response': numeros_sin_no_response
+            'numeros_sin_no_response': numeros_sin_no_response,
+            'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
+            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None
         }
 
         if progress_callback:

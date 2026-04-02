@@ -9,6 +9,8 @@ export interface AnalysisStats {
   filas_invalidas_descartadas: number;
   numeros_con_no_response: number;
   numeros_sin_no_response: number;
+  first_date?: string;
+  last_date?: string;
 }
 
 export interface JobStatus {
