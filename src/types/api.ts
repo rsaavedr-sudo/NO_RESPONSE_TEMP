@@ -7,6 +7,8 @@ export interface AnalysisStats {
   numeros_match: number;
   numeros_no_match: number;
   filas_invalidas_descartadas: number;
+  numeros_con_no_response: number;
+  numeros_sin_no_response: number;
 }
 
 export interface JobStatus {

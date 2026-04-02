@@ -10,6 +10,9 @@ class AnalysisStats(BaseModel):
     numeros_match: int
     numeros_no_match: int
     filas_invalidas_descartadas: int
+    # Pie chart specific fields
+    numeros_con_no_response: int
+    numeros_sin_no_response: int
 
 class JobStatus(BaseModel):
     job_id: str

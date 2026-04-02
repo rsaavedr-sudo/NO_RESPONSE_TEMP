@@ -161,6 +161,8 @@ def analyze_cdr_chunked(
         numeros_con_frecuencia_insuficiente = 0
         numeros_match = 0
         numeros_no_match = 0
+        numeros_con_no_response = 0
+        numeros_sin_no_response = 0
 
         # Sort sip codes for consistent column order
         sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
@@ -169,6 +171,13 @@ def analyze_cdr_chunked(
             total = data['total']
             sip_counts = data['sip_counts']
             
+            # Check if number has ANY no_response code (404 or 480)
+            has_no_response = (404 in sip_counts) or (480 in sip_counts)
+            if has_no_response:
+                numeros_con_no_response += 1
+            else:
+                numeros_sin_no_response += 1
+
             has_200 = 200 in sip_counts
             count_404 = sip_counts.get(404, 0)
             pct_404_val = (count_404 / total * 100) if total > 0 else 0
@@ -229,7 +238,9 @@ def analyze_cdr_chunked(
             'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
             'numeros_match': numeros_match,
             'numeros_no_match': numeros_no_match,
-            'filas_invalidas_descartadas': invalid_rows
+            'filas_invalidas_descartadas': invalid_rows,
+            'numeros_con_no_response': numeros_con_no_response,
+            'numeros_sin_no_response': numeros_sin_no_response
         }
 
         if progress_callback:

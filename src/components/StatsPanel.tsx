@@ -25,6 +25,8 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ stats }) => {
     { label: 'Excluidos (pct_404 > 30%)', value: stats.numeros_excluidos_404, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
     { label: 'Frecuencia Insuficiente', value: stats.numeros_con_frecuencia_insuficiente, icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-50' },
     { label: 'Filas Inválidas', value: stats.filas_invalidas_descartadas, icon: Hash, color: 'text-red-800', bg: 'bg-red-100' },
+    { label: 'Con NO_RESPONSE', value: stats.numeros_con_no_response, icon: Filter, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'Sin NO_RESPONSE', value: stats.numeros_sin_no_response, icon: CheckCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
   ];
 
   return (
