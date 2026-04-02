@@ -14,6 +14,7 @@ class AnalysisStats(BaseModel):
 class JobStatus(BaseModel):
     job_id: str
     status: str
+    analysis_type: str = "no_response"
     progress_percent: int
     stage: str
     message: str
@@ -24,3 +25,4 @@ class JobStatus(BaseModel):
 class AnalyzeResponse(BaseModel):
     job_id: str
     status: str
+    analysis_type: str

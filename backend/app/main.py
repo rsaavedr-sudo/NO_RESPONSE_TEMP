@@ -37,7 +37,8 @@ async def analyze(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     analysis_days: int = Form(7),
-    min_frequency: int = Form(5)
+    min_frequency: int = Form(5),
+    analysis_type: str = Form("no_response")
 ):
     """
     Starts an asynchronous CDR analysis job with multiple files.
@@ -45,7 +46,7 @@ async def analyze(
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
         
-    job_id = create_job()
+    job_id = create_job(analysis_type=analysis_type)
     input_paths = []
     
     try:
@@ -74,7 +75,7 @@ async def analyze(
         min_frequency=min_frequency
     )
     
-    return {"job_id": job_id, "status": "queued"}
+    return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}
 
 @app.get("/jobs/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
@@ -96,6 +97,7 @@ async def get_job_status(job_id: str):
     return JobStatus(
         job_id=safe_job["job_id"],
         status=safe_job["status"],
+        analysis_type=safe_job.get("analysis_type", "no_response"),
         progress_percent=safe_job["progress_percent"],
         stage=safe_job["stage"],
         message=safe_job["message"],

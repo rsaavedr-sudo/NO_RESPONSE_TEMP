@@ -32,13 +32,14 @@ export interface JobStatus {
   error?: string;
 }
 
-export const startAnalysis = async (files: File[], analysisDays: number, minFrequency: number) => {
+export const startAnalysis = async (files: File[], analysisDays: number, minFrequency: number, analysisType: string = 'no_response') => {
   const formData = new FormData();
   files.forEach(file => {
     formData.append('files', file);
   });
   formData.append('analysis_days', analysisDays.toString());
   formData.append('min_frequency', minFrequency.toString());
+  formData.append('analysis_type', analysisType);
 
   const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
     headers: {
@@ -46,7 +47,7 @@ export const startAnalysis = async (files: File[], analysisDays: number, minFreq
     },
   });
 
-  return response.data as { job_id: string; status: string };
+  return response.data as { job_id: string; status: string; analysis_type: string };
 };
 
 export const cancelAnalysis = async (jobId: string) => {

@@ -22,10 +22,11 @@ class CancellationException(Exception):
     """Exception raised when a job is cancelled by the user."""
     pass
 
-def create_job() -> str:
+def create_job(analysis_type: str = "no_response") -> str:
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
         "job_id": job_id,
+        "analysis_type": analysis_type,
         "status": "queued",
         "progress_percent": 0,
         "stage": "queued",
@@ -88,6 +89,9 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
 
 def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, min_frequency: int):
     try:
+        job = jobs.get(job_id)
+        analysis_type = job.get("analysis_type", "no_response")
+        
         output_filename = f"result_{job_id}.csv"
         output_path = os.path.join(TEMP_DIR, output_filename)
         
@@ -97,14 +101,29 @@ def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, m
         def check_cancel():
             check_cancellation(job_id)
             
-        stats = analyze_cdr_chunked(
-            input_paths=input_paths,
-            output_path=output_path,
-            analysis_days=analysis_days,
-            min_frequency=min_frequency,
-            progress_callback=progress_callback,
-            check_cancellation=check_cancel
-        )
+        if analysis_type == "no_response":
+            stats = analyze_cdr_chunked(
+                input_paths=input_paths,
+                output_path=output_path,
+                analysis_days=analysis_days,
+                min_frequency=min_frequency,
+                progress_callback=progress_callback,
+                check_cancellation=check_cancel
+            )
+        elif analysis_type == "asr":
+            # Placeholder for ASR analysis
+            # For now, we can reuse the same analyzer or a simplified one
+            # In a real scenario, this would be a different function
+            stats = analyze_cdr_chunked(
+                input_paths=input_paths,
+                output_path=output_path,
+                analysis_days=analysis_days,
+                min_frequency=min_frequency,
+                progress_callback=progress_callback,
+                check_cancellation=check_cancel
+            )
+        else:
+            raise ValueError(f"Unknown analysis type: {analysis_type}")
         
         set_job_result(job_id, stats, output_path)
         
