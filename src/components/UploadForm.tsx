@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, X, Settings, Calendar, Hash } from 'lucide-react';
+import { Upload, FileText, X, Settings, Calendar, Hash, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface UploadFormProps {
@@ -7,14 +7,23 @@ interface UploadFormProps {
   onCancel?: () => void;
   disabled?: boolean;
   hideMinFrequency?: boolean;
+  isValidationMode?: boolean;
 }
 
-export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, disabled, hideMinFrequency }) => {
+export const UploadForm: React.FC<UploadFormProps> = ({ 
+  onAnalyze, 
+  onCancel, 
+  disabled, 
+  hideMinFrequency,
+  isValidationMode 
+}) => {
   const [files, setFiles] = useState<File[]>([]);
+  const [targetFile, setTargetFile] = useState<File | null>(null);
   const [analysisDays, setAnalysisDays] = useState(7);
   const [minFrequency, setMinFrequency] = useState(5);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const targetInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -39,7 +48,13 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, dis
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     addFiles(e.target.files);
-    // Reset input value to allow selecting same file again if removed
+    if (e.target) e.target.value = '';
+  };
+
+  const handleTargetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setTargetFile(e.target.files[0]);
+    }
     if (e.target) e.target.value = '';
   };
 
@@ -49,7 +64,11 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, dis
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (files.length > 0) {
+    if (isValidationMode) {
+      if (targetFile && files.length > 0) {
+        onAnalyze([targetFile, ...files], analysisDays, minFrequency);
+      }
+    } else if (files.length > 0) {
       onAnalyze(files, analysisDays, minFrequency);
     }
   };
@@ -58,31 +77,88 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, dis
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div
-        className={`relative border-2 border-dashed rounded-2xl p-10 transition-all duration-300 flex flex-col items-center justify-center gap-4 cursor-pointer ${
-          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => !disabled && fileInputRef.current?.click()}
-      >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept=".csv"
-          multiple
-          className="hidden"
-          disabled={disabled}
-        />
-        
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="p-4 bg-blue-100 rounded-full text-blue-600">
-            <Upload className="w-8 h-8" />
+      {isValidationMode && (
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-bold text-gray-700 uppercase tracking-wider">
+            <Target className="w-4 h-4 text-indigo-600" />
+            1. Lista de Números a Validar (Target)
+          </label>
+          <div 
+            onClick={() => !disabled && targetInputRef.current?.click()}
+            className={`p-4 border-2 border-dashed rounded-xl transition-all cursor-pointer flex items-center gap-4 ${
+              targetFile ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <input
+              type="file"
+              ref={targetInputRef}
+              onChange={handleTargetChange}
+              accept=".csv"
+              className="hidden"
+              disabled={disabled}
+            />
+            <div className={`p-2 rounded-lg ${targetFile ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+              <FileText className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {targetFile ? targetFile.name : 'Seleccionar archivo de objetivos...'}
+              </p>
+              <p className="text-[10px] text-gray-500">
+                {targetFile ? `${(targetFile.size / 1024).toFixed(1)} KB` : 'Archivo CSV con columna e164'}
+              </p>
+            </div>
+            {targetFile && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTargetFile(null);
+                }}
+                className="p-1 hover:bg-red-100 rounded-full text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <p className="text-lg font-medium text-gray-700">Arrastra tus archivos CSV aquí</p>
-          <p className="text-sm text-gray-500">Puedes subir varios archivos para un análisis consolidado.</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {isValidationMode && (
+          <label className="flex items-center gap-2 text-sm font-bold text-gray-700 uppercase tracking-wider">
+            <FileText className="w-4 h-4 text-blue-600" />
+            2. Archivos CDR para Validación
+          </label>
+        )}
+        <div
+          className={`relative border-2 border-dashed rounded-2xl p-10 transition-all duration-300 flex flex-col items-center justify-center gap-4 cursor-pointer ${
+            isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => !disabled && fileInputRef.current?.click()}
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".csv"
+            multiple
+            className="hidden"
+            disabled={disabled}
+          />
+          
+          <div className="flex flex-col items-center gap-2 text-center">
+            <div className="p-4 bg-blue-100 rounded-full text-blue-600">
+              <Upload className="w-8 h-8" />
+            </div>
+            <p className="text-lg font-medium text-gray-700">
+              {isValidationMode ? 'Arrastra los CDR aquí' : 'Arrastra tus archivos CSV aquí'}
+            </p>
+            <p className="text-sm text-gray-500">Puedes subir varios archivos para un análisis consolidado.</p>
+          </div>
         </div>
       </div>
 

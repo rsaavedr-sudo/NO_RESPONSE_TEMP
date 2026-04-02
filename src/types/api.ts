@@ -22,6 +22,14 @@ export interface AnalysisStats {
   by_client?: any[];
   by_route?: any[];
 
+  // Validation fields
+  tp_count?: number;
+  fp_count?: number;
+  precision?: number;
+  error_rate?: number;
+  total_analizados?: number;
+  pct_con_respuesta?: number;
+
   // Common fields
   filas_invalidas_descartadas: number;
   first_date?: string;

@@ -4,7 +4,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-from .analyzer import analyze_cdr_chunked, analyze_asr_chunked
+from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
 from .utils import to_json_safe
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,18 @@ def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, m
         elif analysis_type == "asr":
             stats = analyze_asr_chunked(
                 input_paths=input_paths,
+                output_path=output_path,
+                analysis_days=analysis_days,
+                progress_callback=progress_callback,
+                check_cancellation=check_cancel
+            )
+        elif analysis_type == "no_response_validation":
+            # First file is the target list, others are CDRs
+            target_path = input_paths[0]
+            cdr_paths = input_paths[1:]
+            stats = analyze_no_response_validation(
+                target_path=target_path,
+                cdr_paths=cdr_paths,
                 output_path=output_path,
                 analysis_days=analysis_days,
                 progress_callback=progress_callback,

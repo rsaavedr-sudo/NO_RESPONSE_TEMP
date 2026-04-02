@@ -25,6 +25,14 @@ class AnalysisStats(BaseModel):
     by_client: Optional[List[Dict[str, Any]]] = None
     by_route: Optional[List[Dict[str, Any]]] = None
 
+    # Validation fields
+    tp_count: Optional[int] = None
+    fp_count: Optional[int] = None
+    precision: Optional[float] = None
+    error_rate: Optional[float] = None
+    total_analizados: Optional[int] = None
+    pct_con_respuesta: Optional[float] = None
+
     # Common fields
     filas_invalidas_descartadas: int
     first_date: Optional[str] = None

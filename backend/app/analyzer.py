@@ -499,3 +499,142 @@ def analyze_asr_chunked(
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
         raise e
+
+def analyze_no_response_validation(
+    target_path: str,
+    cdr_paths: list[str],
+    output_path: str,
+    analysis_days: int,
+    chunk_size: int = 500000,
+    progress_callback = None,
+    check_cancellation = None
+) -> Dict[str, Any]:
+    """
+    Validates a list of NO_RESPONSE numbers against CDR files.
+    """
+    if progress_callback:
+        progress_callback(0, "loading_targets", "Cargando lista de números a validar...")
+
+    try:
+        # Load target numbers
+        target_df = pd.read_csv(target_path, sep=';', dtype={'e164': str})
+        if 'e164' not in target_df.columns:
+            # Try comma if semicolon fails
+            target_df = pd.read_csv(target_path, sep=',', dtype={'e164': str})
+        
+        if 'e164' not in target_df.columns:
+            raise ValueError("El archivo de números debe tener una columna 'e164'.")
+            
+        target_numbers = set(target_df['e164'].dropna().unique())
+        total_targets = len(target_numbers)
+        
+        if total_targets == 0:
+            raise ValueError("No se encontraron números válidos en el archivo de objetivos.")
+
+        # Track results: number -> has_sip_200 (bool)
+        # We only care about numbers in target_numbers
+        results = {num: False for num in target_numbers}
+        
+        # Pass 1: Find max_date to apply window
+        if progress_callback:
+            progress_callback(10, "scanning_dates", "Escaneando fechas en CDR...")
+
+        max_date = None
+        for cdr_path in cdr_paths:
+            for chunk in pd.read_csv(cdr_path, sep=';', usecols=['call_date'], chunksize=chunk_size):
+                if check_cancellation: check_cancellation()
+                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                current_max = chunk['call_date'].max()
+                if max_date is None or (current_max is not None and current_max > max_date):
+                    max_date = current_max
+
+        if max_date is None:
+            raise ValueError("No se encontraron fechas válidas en los CDR.")
+
+        start_date = max_date - timedelta(days=analysis_days)
+
+        # Pass 2: Scan CDR for SIP 200
+        if progress_callback:
+            progress_callback(20, "processing_cdr", f"Analizando CDR (Ventana: {start_date.date()} a {max_date.date()})...")
+
+        rows_processed = 0
+        for cdr_path in cdr_paths:
+            for chunk in pd.read_csv(
+                cdr_path, 
+                sep=';', 
+                usecols=['call_date', 'e164', 'sip_code'], 
+                dtype={'e164': str},
+                chunksize=chunk_size
+            ):
+                if check_cancellation: check_cancellation()
+                
+                rows_processed += len(chunk)
+                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
+                chunk = chunk[chunk['call_date'] >= start_date]
+                
+                # Filter chunk to only include target numbers
+                chunk = chunk[chunk['e164'].isin(target_numbers)]
+                
+                if not chunk.empty:
+                    # Find numbers that have at least one SIP 200
+                    responded = chunk[chunk['sip_code'].astype(int) == 200]['e164'].unique()
+                    for num in responded:
+                        results[num] = True
+
+                if progress_callback:
+                    progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas")
+
+        # Final metrics
+        tp = 0 # True Positive: Predicted NO_RESPONSE, Reality NO_RESPONSE (no SIP 200)
+        fp = 0 # False Positive: Predicted NO_RESPONSE, Reality RESPONDE (has SIP 200)
+        
+        # We only count numbers that appeared in the CDR window? 
+        # Or all numbers in the target list?
+        # The prompt says: "Para cada número... Si el número tiene... -> RESPONDE; Si NO tiene... -> NO RESPONDE"
+        # This implies we consider all numbers in the target list.
+        
+        for num, has_200 in results.items():
+            if has_200:
+                fp += 1
+            else:
+                tp += 1
+        
+        total = tp + fp
+        precision = (tp / total * 100) if total > 0 else 0
+        error_rate = (fp / total * 100) if total > 0 else 0
+        pct_con_respuesta = (fp / total * 100) if total > 0 else 0
+        
+        summary = {
+            'tp_count': tp,
+            'fp_count': fp,
+            'precision': round(precision, 2),
+            'error_rate': round(error_rate, 2),
+            'total_analizados': total,
+            'pct_con_respuesta': round(pct_con_respuesta, 2),
+            'filas_invalidas_descartadas': 0, # Not applicable here
+            'first_date': start_date.strftime('%Y-%m-%d'),
+            'last_date': max_date.strftime('%Y-%m-%d')
+        }
+
+        # Save results table for download
+        results_list = []
+        for num, has_200 in results.items():
+            results_list.append({
+                'e164': num,
+                'realidad': 'RESPONDE' if has_200 else 'NO RESPONDE',
+                'clasificacion': 'FP' if has_200 else 'TP'
+            })
+        
+        pd.DataFrame(results_list).to_csv(output_path, index=False, sep=';')
+
+        if progress_callback:
+            progress_callback(100, "completed", "Validación de modelo completada.")
+
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error in validation analyzer: {str(e)}")
+        if progress_callback:
+            progress_callback(0, "failed", f"Error: {str(e)}")
+        raise e
