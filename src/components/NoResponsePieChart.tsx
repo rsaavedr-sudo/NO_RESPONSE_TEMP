@@ -25,24 +25,26 @@ export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoRes
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full h-80 bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden"
+      className="w-full h-[520px] bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden"
     >
       <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
         Distribución de Números Únicos
       </h3>
       
-      <div className="w-full h-64">
+      <div className="w-full h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={80}
-              paddingAngle={total > 0 ? 5 : 0}
+              innerRadius={0}
+              outerRadius={100} // Increased from 80
+              paddingAngle={0}
               dataKey="value"
               animationDuration={1500}
+              label={({ name, value, percent }) => `${name}: ${value.toLocaleString()} (${(percent * 100).toFixed(1)}%)`}
+              labelLine={true}
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -65,18 +67,26 @@ export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoRes
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mt-2 text-center">
+      <div className="grid grid-cols-2 gap-4 mt-4 text-center border-t border-gray-50 pt-4">
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-red-500 uppercase">NO_RESPONSE</p>
-          <p className="text-xl font-black text-gray-900">{pctNoResponse}%</p>
-          <p className="text-[10px] text-gray-400">{conNoResponse.toLocaleString()} números</p>
+          <p className="text-2xl font-black text-gray-900">{pctNoResponse}%</p>
+          <p className="text-xs font-bold text-gray-400">{conNoResponse.toLocaleString()} casos</p>
         </div>
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-blue-500 uppercase">OTROS</p>
-          <p className="text-xl font-black text-gray-900">{pctOtros}%</p>
-          <p className="text-[10px] text-gray-400">{sinNoResponse.toLocaleString()} números</p>
+          <p className="text-2xl font-black text-gray-900">{pctOtros}%</p>
+          <p className="text-xs font-bold text-gray-400">{sinNoResponse.toLocaleString()} casos</p>
         </div>
       </div>
+      
+      {total > 0 && (
+        <div className="mt-4 text-center">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            Total Universo: <span className="text-gray-900">{total.toLocaleString()} Números Únicos</span>
+          </p>
+        </div>
+      )}
     </motion.div>
   );
 };

@@ -47,8 +47,12 @@ export const AnalysisCriteria: React.FC<AnalysisCriteriaProps> = ({ stats }) => 
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-3xl p-8 border border-gray-100 shadow-xl shadow-blue-900/5"
+      className="bg-white rounded-3xl p-8 border border-gray-100 shadow-xl shadow-blue-900/5 relative overflow-hidden"
     >
+      <div className="absolute top-0 right-0 p-8 opacity-[0.03] pointer-events-none">
+        <Info className="w-32 h-32" />
+      </div>
+      
       <div className="flex items-center gap-3 mb-8">
         <div className="p-2 bg-blue-50 rounded-lg">
           <Info className="w-5 h-5 text-blue-600" />
