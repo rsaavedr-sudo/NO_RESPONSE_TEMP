@@ -11,7 +11,7 @@ export interface AnalysisStats {
 
 export interface JobStatus {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped';
   progress_percent: number;
   stage: string;
   message: string;

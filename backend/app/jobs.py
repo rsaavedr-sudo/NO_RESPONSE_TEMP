@@ -18,6 +18,10 @@ TEMP_DIR = os.getenv("TEMP_DIR", "temp")
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
+class CancellationException(Exception):
+    """Exception raised when a job is cancelled by the user."""
+    pass
+
 def create_job() -> str:
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
@@ -29,12 +33,29 @@ def create_job() -> str:
         "stats": None,
         "error": None,
         "result_path": None,
-        "created_at": datetime.now()
+        "created_at": datetime.now(),
+        "is_cancelled": False
     }
     return job_id
 
+def cancel_job(job_id: str):
+    if job_id in jobs:
+        jobs[job_id]["is_cancelled"] = True
+        jobs[job_id]["status"] = "stopped"
+        jobs[job_id]["stage"] = "stopped"
+        jobs[job_id]["message"] = "Proceso detenido por el usuario"
+        logger.info(f"Job {job_id} marked as cancelled")
+
+def check_cancellation(job_id: str):
+    if job_id in jobs and jobs[job_id].get("is_cancelled"):
+        raise CancellationException("Proceso detenido por el usuario")
+
 def update_job_progress(job_id: str, percent: int, stage: str, message: str):
     if job_id in jobs:
+        # Check for cancellation before updating
+        if jobs[job_id].get("is_cancelled"):
+            raise CancellationException("Proceso detenido por el usuario")
+            
         jobs[job_id]["progress_percent"] = to_json_safe(percent)
         jobs[job_id]["stage"] = stage
         jobs[job_id]["message"] = message
@@ -42,6 +63,8 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
             jobs[job_id]["status"] = "completed"
         elif stage == "failed":
             jobs[job_id]["status"] = "failed"
+        elif stage == "stopped":
+            jobs[job_id]["status"] = "stopped"
         else:
             jobs[job_id]["status"] = "processing"
 
@@ -71,16 +94,24 @@ def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, m
         def progress_callback(percent, stage, message):
             update_job_progress(job_id, percent, stage, message)
             
+        def check_cancel():
+            check_cancellation(job_id)
+            
         stats = analyze_cdr_chunked(
             input_paths=input_paths,
             output_path=output_path,
             analysis_days=analysis_days,
             min_frequency=min_frequency,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            check_cancellation=check_cancel
         )
         
         set_job_result(job_id, stats, output_path)
         
+    except CancellationException:
+        logger.info(f"Job {job_id} was cancelled by the user.")
+        # Status is already updated by cancel_job, but we ensure it here
+        update_job_progress(job_id, 0, "stopped", "Proceso detenido por el usuario")
     except Exception as e:
         logger.exception(f"Error processing job {job_id}")
         set_job_error(job_id, str(e))

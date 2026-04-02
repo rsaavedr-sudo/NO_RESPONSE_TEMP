@@ -13,7 +13,7 @@ import { ProgressBar } from './components/ProgressBar';
 import { StatsPanel } from './components/StatsPanel';
 import { DownloadButton } from './components/DownloadButton';
 import { ErrorAlert } from './components/ErrorAlert';
-import { startAnalysis, getDownloadUrl, API_BASE_URL, getJobStatus } from './api/client';
+import { startAnalysis, getDownloadUrl, API_BASE_URL, getJobStatus, cancelAnalysis } from './api/client';
 import { JobStatus } from './types/api';
 
 const App: React.FC = () => {
@@ -91,6 +91,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCancel = async () => {
+    if (!activeJobId) return;
+    
+    const confirmCancel = window.confirm('¿Estás seguro que deseas detener el análisis?');
+    if (!confirmCancel) return;
+
+    log('cancel', 'solicitado', { jobId: activeJobId });
+    try {
+      await cancelAnalysis(activeJobId);
+      log('cancel', 'exitoso');
+    } catch (err: any) {
+      log('cancel', 'error', err.message);
+      setError('No se pudo cancelar el proceso');
+    }
+  };
+
   const startPolling = (jobId: string) => {
     log('polling', 'iniciado', { jobId });
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -112,6 +128,9 @@ const App: React.FC = () => {
         } else if (data.status === 'failed') {
           log('polling', 'failed', { error: data.error });
           setError(data.error || 'Error en el análisis');
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        } else if (data.status === 'stopped') {
+          log('polling', 'stopped');
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         }
       } catch (err: any) {
@@ -204,6 +223,7 @@ const App: React.FC = () => {
               
               <UploadForm 
                 onAnalyze={handleAnalyze} 
+                onCancel={handleCancel}
                 disabled={jobStatus?.status === 'processing' || jobStatus?.status === 'queued'} 
               />
             </div>

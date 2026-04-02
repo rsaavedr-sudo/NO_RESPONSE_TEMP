@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface UploadFormProps {
   onAnalyze: (files: File[], analysisDays: number, minFrequency: number) => void;
+  onCancel?: () => void;
   disabled?: boolean;
 }
 
-export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, disabled }) => {
+export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, disabled }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [analysisDays, setAnalysisDays] = useState(7);
   const [minFrequency, setMinFrequency] = useState(5);
@@ -170,17 +171,33 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, disabled }) =
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={files.length === 0 || disabled}
-        className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-[0.98] ${
-          files.length === 0 || disabled
-            ? 'bg-gray-400 cursor-not-allowed shadow-none'
-            : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl'
-        }`}
-      >
-        Iniciar Análisis Consolidado
-      </button>
+      <div className="flex gap-4">
+        <button
+          type="submit"
+          disabled={files.length === 0 || disabled}
+          className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-[0.98] ${
+            files.length === 0 || disabled
+              ? 'bg-gray-400 cursor-not-allowed shadow-none'
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl'
+          }`}
+        >
+          Iniciar Análisis Consolidado
+        </button>
+        
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={!disabled}
+          className={`px-6 py-4 rounded-xl font-bold transition-all transform active:scale-[0.98] border-2 flex items-center gap-2 ${
+            !disabled
+              ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+              : 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 shadow-md'
+          }`}
+        >
+          <X className="w-5 h-5" />
+          Parar
+        </button>
+      </div>
     </form>
   );
 };

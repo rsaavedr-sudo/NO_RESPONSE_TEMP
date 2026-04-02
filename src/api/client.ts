@@ -23,7 +23,7 @@ export interface AnalysisStats {
 
 export interface JobStatus {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped';
   progress_percent: number;
   stage: string;
   message: string;
@@ -47,6 +47,11 @@ export const startAnalysis = async (files: File[], analysisDays: number, minFreq
   });
 
   return response.data as { job_id: string; status: string };
+};
+
+export const cancelAnalysis = async (jobId: string) => {
+  const response = await apiClient.post(`/jobs/${jobId}/cancel`);
+  return response.data;
 };
 
 export const getJobStatus = async (jobId: string) => {

@@ -12,7 +12,8 @@ def analyze_cdr_chunked(
     analysis_days: int,
     min_frequency: int,
     chunk_size: int = 500000,
-    progress_callback = None
+    progress_callback = None,
+    check_cancellation = None
 ) -> Dict[str, Any]:
     """
     Analyzes multiple CDR CSV files in chunks to handle large files.
@@ -40,6 +41,9 @@ def analyze_cdr_chunked(
                 on_bad_lines='warn',
                 engine='c'
             ):
+                if check_cancellation:
+                    check_cancellation()
+                    
                 total_rows += len(chunk)
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 
@@ -82,6 +86,9 @@ def analyze_cdr_chunked(
                 chunksize=chunk_size,
                 engine='c'
             ):
+                if check_cancellation:
+                    check_cancellation()
+                    
                 rows_processed_pass2 += len(chunk)
                 
                 # Basic cleaning

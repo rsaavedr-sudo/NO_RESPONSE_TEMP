@@ -10,7 +10,7 @@ from typing import List, Optional
 import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats
-from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs
+from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs, cancel_job
 from .utils import to_json_safe
 
 # Configure logging
@@ -103,6 +103,21 @@ async def get_job_status(job_id: str):
         result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
         error=safe_job["error"]
     )
+
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_analysis(job_id: str):
+    """
+    Cancels an ongoing analysis job.
+    """
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job["status"] not in ["queued", "processing"]:
+        return {"status": "error", "message": f"Cannot cancel job in status {job['status']}"}
+        
+    cancel_job(job_id)
+    return {"status": "ok", "message": "Proceso detenido por el usuario"}
 
 @app.get("/jobs/{job_id}/stream")
 async def stream_job_status(job_id: str):
