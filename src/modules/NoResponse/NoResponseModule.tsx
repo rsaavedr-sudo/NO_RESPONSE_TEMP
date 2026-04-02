@@ -169,10 +169,10 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
           </div>
 
           <AnimatePresence>
-            {jobStatus?.stats && (
+            {jobStatus?.status === 'completed' && (
               <NoResponsePieChart 
-                conNoResponse={jobStatus.stats.numeros_con_no_response} 
-                sinNoResponse={jobStatus.stats.numeros_sin_no_response} 
+                conNoResponse={jobStatus.stats?.numeros_con_no_response || 0} 
+                sinNoResponse={jobStatus.stats?.numeros_sin_no_response || 0} 
               />
             )}
           </AnimatePresence>
