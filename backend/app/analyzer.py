@@ -6,6 +6,47 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+DDD_REGION_MAP = {
+    '11': 'São Paulo', '12': 'São Paulo', '13': 'São Paulo', '14': 'São Paulo', '15': 'São Paulo', '16': 'São Paulo', '17': 'São Paulo', '18': 'São Paulo', '19': 'São Paulo',
+    '21': 'Rio de Janeiro', '22': 'Rio de Janeiro', '24': 'Rio de Janeiro',
+    '27': 'Espírito Santo', '28': 'Espírito Santo',
+    '31': 'Minas Gerais', '32': 'Minas Gerais', '33': 'Minas Gerais', '34': 'Minas Gerais', '35': 'Minas Gerais', '37': 'Minas Gerais', '38': 'Minas Gerais',
+    '41': 'Paraná', '42': 'Paraná', '43': 'Paraná', '44': 'Paraná', '45': 'Paraná', '46': 'Paraná',
+    '47': 'Santa Catarina', '48': 'Santa Catarina', '49': 'Santa Catarina',
+    '51': 'Rio Grande do Sul', '53': 'Rio Grande do Sul', '54': 'Rio Grande do Sul', '55': 'Rio Grande do Sul',
+    '61': 'Distrito Federal',
+    '62': 'Goiás', '64': 'Goiás',
+    '63': 'Tocantins',
+    '65': 'Mato Grosso', '66': 'Mato Grosso',
+    '67': 'Mato Grosso do Sul',
+    '68': 'Acre',
+    '69': 'Rondônia',
+    '71': 'Bahia', '73': 'Bahia', '74': 'Bahia', '75': 'Bahia', '77': 'Bahia',
+    '79': 'Sergipe',
+    '81': 'Pernambuco', '87': 'Pernambuco',
+    '82': 'Alagoas',
+    '83': 'Paraíba',
+    '84': 'Rio Grande do Norte',
+    '85': 'Ceará', '88': 'Ceará',
+    '86': 'Piauí', '89': 'Piauí',
+    '91': 'Pará', '92': 'Amazonas', '93': 'Pará', '94': 'Pará',
+    '95': 'Roraima',
+    '96': 'Amapá',
+    '97': 'Amazonas',
+    '98': 'Maranhão', '99': 'Maranhão'
+}
+
+def get_region(e164):
+    if not isinstance(e164, str) or len(e164) < 4:
+        return 'Desconocido', '??'
+    
+    # Check if starts with 55
+    if e164.startswith('55'):
+        ddd = e164[2:4]
+        return DDD_REGION_MAP.get(ddd, 'Otros'), ddd
+    
+    return 'Internacional', 'INT'
+
 def analyze_cdr_chunked(
     input_paths: list[str],
     output_path: str,
@@ -260,6 +301,201 @@ def analyze_cdr_chunked(
 
     except Exception as e:
         logger.error(f"Error in analyzer: {str(e)}")
+        if progress_callback:
+            progress_callback(0, "failed", f"Error: {str(e)}")
+        raise e
+
+def analyze_asr_chunked(
+    input_paths: list[str],
+    output_path: str,
+    analysis_days: int,
+    chunk_size: int = 500000,
+    progress_callback = None,
+    check_cancellation = None
+) -> Dict[str, Any]:
+    """
+    Analyzes CDR for ASR metrics across multiple dimensions.
+    """
+    if progress_callback:
+        progress_callback(0, "scanning_dates", "Escaneando fechas y validando archivos...")
+
+    max_date = None
+    total_rows = 0
+    invalid_rows = 0
+
+    try:
+        # Pass 1: Find max_date
+        for input_path in input_paths:
+            for chunk in pd.read_csv(
+                input_path, 
+                sep=';', 
+                usecols=['call_date'], 
+                chunksize=chunk_size,
+                on_bad_lines='warn',
+                engine='c'
+            ):
+                if check_cancellation:
+                    check_cancellation()
+                total_rows += len(chunk)
+                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                invalid_rows += chunk['call_date'].isna().sum()
+                current_max = chunk['call_date'].max()
+                if max_date is None or (current_max is not None and current_max > max_date):
+                    max_date = current_max
+                if progress_callback:
+                    progress_callback(int((total_rows / 40000000) * 20), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
+
+        if max_date is None:
+            raise ValueError("No se encontraron fechas válidas en los archivos.")
+
+        start_date = max_date - timedelta(days=analysis_days)
+        
+        # Pass 2: Aggregate by dimensions
+        if progress_callback:
+            progress_callback(20, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
+
+        # Aggregators
+        # dim -> key -> {total, attended}
+        dims = {
+            'ddd': {},
+            'region': {},
+            'date': {},
+            'hour': {},
+            'client': {},
+            'route': {}
+        }
+        
+        total_intentos = 0
+        intentos_atendidos = 0
+        rows_processed = 0
+        global_first_date = None
+        global_last_date = None
+
+        for input_path in input_paths:
+            # Usecols for ASR
+            cols = ['call_date', 'e164', 'sip_code', 'client_code', 'route_code']
+            for chunk in pd.read_csv(
+                input_path, 
+                sep=';', 
+                usecols=cols, 
+                dtype={'e164': str, 'client_code': str, 'route_code': str},
+                chunksize=chunk_size,
+                engine='c'
+            ):
+                if check_cancellation:
+                    check_cancellation()
+                
+                rows_processed += len(chunk)
+                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
+                if chunk.empty: continue
+                
+                chunk = chunk[chunk['call_date'] >= start_date]
+                if chunk.empty: continue
+
+                # Track global date range
+                c_min = chunk['call_date'].min()
+                c_max = chunk['call_date'].max()
+                if global_first_date is None or c_min < global_first_date: global_first_date = c_min
+                if global_last_date is None or c_max > global_last_date: global_last_date = c_max
+
+                # Extract dimensions
+                chunk['is_attended'] = (chunk['sip_code'].astype(int) == 200)
+                
+                # DDD and Region
+                chunk['region_info'] = chunk['e164'].apply(get_region)
+                chunk['region'] = chunk['region_info'].apply(lambda x: x[0])
+                chunk['ddd'] = chunk['region_info'].apply(lambda x: x[1])
+                
+                # Date and Hour
+                chunk['date'] = chunk['call_date'].dt.strftime('%Y-%m-%d')
+                chunk['hour'] = chunk['call_date'].dt.hour.astype(str).str.zfill(2) + ":00"
+
+                # Update global counts
+                total_intentos += len(chunk)
+                intentos_atendidos += chunk['is_attended'].sum()
+
+                # Helper to aggregate a dimension
+                def agg_dim(dim_name, col_name):
+                    agg = chunk.groupby(col_name).agg(
+                        total=('is_attended', 'count'),
+                        attended=('is_attended', 'sum')
+                    )
+                    for key, row in agg.iterrows():
+                        if key not in dims[dim_name]:
+                            dims[dim_name][key] = {'total': 0, 'attended': 0}
+                        dims[dim_name][key]['total'] += row['total']
+                        dims[dim_name][key]['attended'] += row['attended']
+
+                agg_dim('ddd', 'ddd')
+                agg_dim('region', 'region')
+                agg_dim('date', 'date')
+                agg_dim('hour', 'hour')
+                agg_dim('client', 'client_code')
+                agg_dim('route', 'route_code')
+
+                if progress_callback:
+                    p = 20 + int((rows_processed / total_rows) * 70)
+                    progress_callback(p, "processing_chunks", f"Analizando registros ASR... {rows_processed}/{total_rows}")
+
+        # Final calculations
+        if progress_callback:
+            progress_callback(90, "generating_output", "Generando estadísticas ASR...")
+
+        def format_dim(dim_name):
+            data = []
+            for key, val in dims[dim_name].items():
+                total = val['total']
+                attended = val['attended']
+                not_attended = total - attended
+                asr = (attended / total * 100) if total > 0 else 0
+                data.append({
+                    'category': str(key),
+                    'total': int(total),
+                    'attended': int(attended),
+                    'not_attended': int(not_attended),
+                    'asr': round(asr, 2)
+                })
+            # Sort by category or total? Let's sort by total descending for most
+            if dim_name in ['date', 'hour']:
+                return sorted(data, key=lambda x: x['category'])
+            return sorted(data, key=lambda x: x['total'], reverse=True)
+
+        asr_global = (intentos_atendidos / total_intentos * 100) if total_intentos > 0 else 0
+        
+        summary = {
+            'total_intentos': total_intentos,
+            'intentos_atendidos': intentos_atendidos,
+            'intentos_no_atendidos': total_intentos - intentos_atendidos,
+            'asr_global': round(asr_global, 2),
+            'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
+            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
+            'by_ddd': format_dim('ddd'),
+            'by_region': format_dim('region'),
+            'by_date': format_dim('date'),
+            'by_hour': format_dim('hour'),
+            'by_client': format_dim('client'),
+            'by_route': format_dim('route'),
+            'filas_invalidas_descartadas': invalid_rows
+        }
+
+        # Save a simple CSV with the global dimensions for download.
+        all_data = []
+        for d_name in dims:
+            for item in summary[f'by_{d_name}']:
+                item_copy = item.copy()
+                item_copy['dimension'] = d_name
+                all_data.append(item_copy)
+        
+        pd.DataFrame(all_data).to_csv(output_path, index=False, sep=';')
+
+        if progress_callback:
+            progress_callback(100, "completed", "Análisis ASR completado exitosamente.")
+
+        return summary
+
+    except Exception as e:
+        logger.error(f"Error in ASR analyzer: {str(e)}")
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
         raise e

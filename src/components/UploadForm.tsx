@@ -6,9 +6,10 @@ interface UploadFormProps {
   onAnalyze: (files: File[], analysisDays: number, minFrequency: number) => void;
   onCancel?: () => void;
   disabled?: boolean;
+  hideMinFrequency?: boolean;
 }
 
-export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, disabled }) => {
+export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, disabled, hideMinFrequency }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [analysisDays, setAnalysisDays] = useState(7);
   const [minFrequency, setMinFrequency] = useState(5);
@@ -136,7 +137,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, dis
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
             <Calendar className="w-4 h-4 text-blue-500" />
@@ -154,21 +155,23 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onAnalyze, onCancel, dis
           <p className="text-xs text-gray-500">Ventana temporal desde la última fecha del archivo.</p>
         </div>
 
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <Hash className="w-4 h-4 text-blue-500" />
-            Frecuencia Mínima
-          </label>
-          <input
-            type="number"
-            value={minFrequency}
-            onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
-            min="1"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            disabled={disabled}
-          />
-          <p className="text-xs text-gray-500">Mínimo de llamadas por número para clasificar.</p>
-        </div>
+        {!hideMinFrequency && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <Hash className="w-4 h-4 text-blue-500" />
+              Frecuencia Mínima
+            </label>
+            <input
+              type="number"
+              value={minFrequency}
+              onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
+              min="1"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              disabled={disabled}
+            />
+            <p className="text-xs text-gray-500">Mínimo de llamadas por número para clasificar.</p>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-4">

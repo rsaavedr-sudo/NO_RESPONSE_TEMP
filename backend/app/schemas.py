@@ -1,18 +1,32 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 class AnalysisStats(BaseModel):
-    total_registros: int
-    total_numeros_unicos: int
-    numeros_excluidos_200: int
-    numeros_excluidos_404: int
-    numeros_con_frecuencia_insuficiente: int
-    numeros_match: int
-    numeros_no_match: int
+    # NO_RESPONSE fields
+    total_registros: Optional[int] = None
+    total_numeros_unicos: Optional[int] = None
+    numeros_excluidos_200: Optional[int] = None
+    numeros_excluidos_404: Optional[int] = None
+    numeros_con_frecuencia_insuficiente: Optional[int] = None
+    numeros_match: Optional[int] = None
+    numeros_no_match: Optional[int] = None
+    numeros_con_no_response: Optional[int] = None
+    numeros_sin_no_response: Optional[int] = None
+    
+    # ASR fields
+    total_intentos: Optional[int] = None
+    intentos_atendidos: Optional[int] = None
+    intentos_no_atendidos: Optional[int] = None
+    asr_global: Optional[float] = None
+    by_ddd: Optional[List[Dict[str, Any]]] = None
+    by_region: Optional[List[Dict[str, Any]]] = None
+    by_date: Optional[List[Dict[str, Any]]] = None
+    by_hour: Optional[List[Dict[str, Any]]] = None
+    by_client: Optional[List[Dict[str, Any]]] = None
+    by_route: Optional[List[Dict[str, Any]]] = None
+
+    # Common fields
     filas_invalidas_descartadas: int
-    # Pie chart specific fields
-    numeros_con_no_response: int
-    numeros_sin_no_response: int
     first_date: Optional[str] = None
     last_date: Optional[str] = None
 

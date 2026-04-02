@@ -4,7 +4,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-from .analyzer import analyze_cdr_chunked
+from .analyzer import analyze_cdr_chunked, analyze_asr_chunked
 from .utils import to_json_safe
 
 logger = logging.getLogger(__name__)
@@ -111,14 +111,10 @@ def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, m
                 check_cancellation=check_cancel
             )
         elif analysis_type == "asr":
-            # Placeholder for ASR analysis
-            # For now, we can reuse the same analyzer or a simplified one
-            # In a real scenario, this would be a different function
-            stats = analyze_cdr_chunked(
+            stats = analyze_asr_chunked(
                 input_paths=input_paths,
                 output_path=output_path,
                 analysis_days=analysis_days,
-                min_frequency=min_frequency,
                 progress_callback=progress_callback,
                 check_cancellation=check_cancel
             )

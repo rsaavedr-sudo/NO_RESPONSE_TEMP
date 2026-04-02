@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Sidebar, ModuleType } from './components/Sidebar';
 import { NoResponseModule } from './modules/NoResponse/NoResponseModule';
-import { AsrModule } from './modules/ASR/AsrModule';
+import { ASRModule } from './modules/ASR/AsrModule';
 
 const App: React.FC = () => {
   const [activeModule, setActiveModule] = useState<ModuleType>('no_response');
@@ -34,7 +34,7 @@ const App: React.FC = () => {
       case 'no_response':
         return <NoResponseModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'asr':
-        return <AsrModule log={log} setLastEndpoint={setLastEndpoint} />;
+        return <ASRModule log={log} setLastEndpoint={setLastEndpoint} />;
       default:
         return <NoResponseModule log={log} setLastEndpoint={setLastEndpoint} />;
     }
