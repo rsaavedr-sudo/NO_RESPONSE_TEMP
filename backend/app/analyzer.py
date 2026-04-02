@@ -558,7 +558,13 @@ def analyze_no_response_validation(
             progress_callback(20, "processing_cdr", f"Analizando CDR (Ventana: {start_date.date()} a {max_date.date()})...")
 
         rows_processed = 0
+        cdr_stats = []
+        
         for cdr_path in cdr_paths:
+            filename = os.path.basename(cdr_path)
+            file_total_rows = 0
+            file_matched_rows = 0
+            
             for chunk in pd.read_csv(
                 cdr_path, 
                 sep=';', 
@@ -568,22 +574,32 @@ def analyze_no_response_validation(
             ):
                 if check_cancellation: check_cancellation()
                 
-                rows_processed += len(chunk)
+                chunk_len = len(chunk)
+                file_total_rows += chunk_len
+                rows_processed += chunk_len
+                
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
                 chunk = chunk[chunk['call_date'] >= start_date]
                 
                 # Filter chunk to only include target numbers
-                chunk = chunk[chunk['e164'].isin(target_numbers)]
+                matched_in_chunk = chunk[chunk['e164'].isin(target_numbers)]
+                file_matched_rows += len(matched_in_chunk)
                 
-                if not chunk.empty:
+                if not matched_in_chunk.empty:
                     # Find numbers that have at least one SIP 200
-                    responded = chunk[chunk['sip_code'].astype(int) == 200]['e164'].unique()
+                    responded = matched_in_chunk[matched_in_chunk['sip_code'].astype(int) == 200]['e164'].unique()
                     for num in responded:
                         results[num] = True
 
                 if progress_callback:
                     progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas")
+            
+            cdr_stats.append({
+                'filename': filename,
+                'total_rows': file_total_rows,
+                'matched_rows': file_matched_rows
+            })
 
         # Final metrics
         tp = 0 # True Positive: Predicted NO_RESPONSE, Reality NO_RESPONSE (no SIP 200)
@@ -609,7 +625,8 @@ def analyze_no_response_validation(
             'pct_con_respuesta': round(pct_con_respuesta, 2),
             'filas_invalidas_descartadas': 0,
             'first_date': start_date.strftime('%Y-%m-%d'),
-            'last_date': max_date.strftime('%Y-%m-%d')
+            'last_date': max_date.strftime('%Y-%m-%d'),
+            'cdr_stats': cdr_stats
         }
 
         # Pass 3: Extract detailed CDR matches

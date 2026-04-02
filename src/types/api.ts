@@ -34,6 +34,7 @@ export interface AnalysisStats {
   filas_invalidas_descartadas: number;
   first_date?: string;
   last_date?: string;
+  cdr_stats?: any[];
 }
 
 export interface JobStatus {

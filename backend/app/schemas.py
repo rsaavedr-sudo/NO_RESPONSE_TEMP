@@ -37,6 +37,7 @@ class AnalysisStats(BaseModel):
     filas_invalidas_descartadas: int
     first_date: Optional[str] = None
     last_date: Optional[str] = None
+    cdr_stats: Optional[List[Dict[str, Any]]] = None
 
 class JobStatus(BaseModel):
     job_id: str

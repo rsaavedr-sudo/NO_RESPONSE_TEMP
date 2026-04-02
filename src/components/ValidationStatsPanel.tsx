@@ -68,6 +68,43 @@ export const ValidationStatsPanel: React.FC<ValidationStatsPanelProps> = ({ stat
         ))}
       </div>
 
+      {stats.cdr_stats && stats.cdr_stats.length > 0 && (
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <Target className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">Volumen por Archivo CDR</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-50">
+                  <th className="py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider">Archivo CDR</th>
+                  <th className="py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider text-right">Registros Totales</th>
+                  <th className="py-3 text-[10px] font-black text-gray-400 uppercase tracking-wider text-right">Casos Encontrados</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {stats.cdr_stats.map((cdr, i) => (
+                  <tr key={i} className="group">
+                    <td className="py-4 text-sm font-medium text-gray-700 group-hover:text-indigo-600 transition-colors">
+                      {cdr.filename}
+                    </td>
+                    <td className="py-4 text-sm text-gray-500 text-right font-mono">
+                      {cdr.total_rows?.toLocaleString()}
+                    </td>
+                    <td className="py-4 text-sm font-bold text-indigo-600 text-right font-mono">
+                      {cdr.matched_rows?.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-indigo-50 rounded-lg">
