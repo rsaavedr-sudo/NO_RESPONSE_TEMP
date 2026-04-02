@@ -25,6 +25,9 @@ export interface AnalysisStats {
   // Validation fields
   tp_count?: number;
   fp_count?: number;
+  tp_rows?: number;
+  fp_rows?: number;
+  total_cdr_rows?: number;
   precision?: number;
   error_rate?: number;
   total_analizados?: number;

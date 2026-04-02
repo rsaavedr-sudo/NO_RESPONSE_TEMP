@@ -184,8 +184,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
             <>
               <ValidationStatsPanel stats={jobStatus.stats} />
               <ValidationPieChart 
-                tp={jobStatus.stats.tp_count || 0} 
-                fp={jobStatus.stats.fp_count || 0} 
+                tp={jobStatus.stats.tp_rows || 0} 
+                fp={jobStatus.stats.fp_rows || 0} 
+                totalCdr={jobStatus.stats.total_cdr_rows || 0}
               />
               {activeJobId && jobStatus.status === 'completed' && (
                 <MatchedRecordsTable jobId={activeJobId} />

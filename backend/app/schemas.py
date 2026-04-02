@@ -28,6 +28,9 @@ class AnalysisStats(BaseModel):
     # Validation fields
     tp_count: Optional[int] = None
     fp_count: Optional[int] = None
+    tp_rows: Optional[int] = None
+    fp_rows: Optional[int] = None
+    total_cdr_rows: Optional[int] = None
     precision: Optional[float] = None
     error_rate: Optional[float] = None
     total_analizados: Optional[int] = None

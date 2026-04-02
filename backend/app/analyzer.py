@@ -635,6 +635,8 @@ def analyze_no_response_validation(
 
         detailed_output_path = output_path.replace(".csv", "_detailed.csv")
         first_chunk = True
+        total_tp_rows = 0
+        total_fp_rows = 0
         
         for cdr_path in cdr_paths:
             for chunk in pd.read_csv(
@@ -649,12 +651,17 @@ def analyze_no_response_validation(
                 matched_chunk = chunk[chunk['e164'].isin(target_numbers)].copy()
                 
                 if not matched_chunk.empty:
+                    # Count TP/FP rows
+                    is_fp = matched_chunk['e164'].map(lambda x: results.get(x, False))
+                    total_fp_rows += int(is_fp.sum())
+                    total_tp_rows += int((~is_fp).sum())
+
                     # Add auxiliary columns
-                    matched_chunk['classification_result'] = matched_chunk['e164'].map(
-                        lambda x: 'FP' if results.get(x) else 'TP'
+                    matched_chunk['classification_result'] = is_fp.map(
+                        lambda x: 'FP' if x else 'TP'
                     )
-                    matched_chunk['has_sip_200'] = matched_chunk['e164'].map(
-                        lambda x: 'YES' if results.get(x) else 'NO'
+                    matched_chunk['has_sip_200'] = is_fp.map(
+                        lambda x: 'YES' if x else 'NO'
                     )
                     
                     matched_chunk.to_csv(
@@ -665,6 +672,11 @@ def analyze_no_response_validation(
                         header=first_chunk
                     )
                     first_chunk = False
+
+        # Add row counts to summary
+        summary['total_cdr_rows'] = sum(s['total_rows'] for s in cdr_stats)
+        summary['tp_rows'] = total_tp_rows
+        summary['fp_rows'] = total_fp_rows
 
         # Save summary results table as well
         results_list = []
