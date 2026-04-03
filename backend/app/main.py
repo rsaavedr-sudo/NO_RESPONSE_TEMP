@@ -9,8 +9,8 @@ from sse_starlette.sse import EventSourceResponse
 from typing import List, Optional
 import json
 
-from .schemas import AnalyzeResponse, JobStatus, AnalysisStats
-from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs, cancel_job
+from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse
+from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs, cancel_job, get_system_stats, cleanup_system
 from .utils import to_json_safe
 
 # Configure logging
@@ -165,6 +165,19 @@ async def cancel_analysis(job_id: str):
         
     cancel_job(job_id)
     return {"status": "ok", "message": "Proceso detenido por el usuario"}
+
+@app.get("/maintenance/stats", response_model=SystemStats)
+async def get_stats():
+    return get_system_stats()
+
+@app.post("/maintenance/cleanup", response_model=CleanupResponse)
+async def cleanup(request: CleanupRequest):
+    result = cleanup_system(module=request.module, keep_latest=request.keep_latest)
+    return {
+        "files_deleted": result["files_deleted"],
+        "size_freed_bytes": result["size_freed_bytes"],
+        "message": f"Limpieza completada. Se eliminaron {result['files_deleted']} archivos."
+    }
 
 @app.get("/jobs/{job_id}/stream")
 async def stream_job_status(job_id: str):

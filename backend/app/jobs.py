@@ -47,6 +47,154 @@ def cancel_job(job_id: str):
         jobs[job_id]["message"] = "Proceso detenido por el usuario"
         logger.info(f"Job {job_id} marked as cancelled")
 
+def get_system_stats():
+    total_files = 0
+    total_size = 0
+    temp_count = 0
+    temp_size = 0
+    result_count = 0
+    result_size = 0
+    
+    by_module = {
+        "no_response": {"files": 0, "size": 0},
+        "asr": {"files": 0, "size": 0},
+        "no_response_validation": {"files": 0, "size": 0},
+        "unknown": {"files": 0, "size": 0}
+    }
+    
+    last_analysis = None
+    
+    for filename in os.listdir(TEMP_DIR):
+        filepath = os.path.join(TEMP_DIR, filename)
+        if os.path.isfile(filepath):
+            try:
+                size = os.path.getsize(filepath)
+                total_files += 1
+                total_size += size
+                
+                # Identify module
+                module = "unknown"
+                job_id = None
+                if filename.startswith("input_"):
+                    parts = filename.split("_")
+                    if len(parts) >= 2:
+                        job_id = parts[1]
+                    temp_count += 1
+                    temp_size += size
+                elif filename.startswith("result_"):
+                    parts = filename.split("_")
+                    if len(parts) >= 2:
+                        # result_jobid.csv or result_jobid_detailed.csv
+                        job_id = parts[1].replace(".csv", "").replace("_detailed", "")
+                    result_count += 1
+                    result_size += size
+                
+                if job_id and job_id in jobs:
+                    module = jobs[job_id].get("analysis_type", "unknown")
+                    created_at = jobs[job_id].get("created_at")
+                    if not last_analysis or (created_at and created_at > last_analysis):
+                        last_analysis = created_at
+                
+                if module in by_module:
+                    by_module[module]["files"] += 1
+                    by_module[module]["size"] += size
+                else:
+                    by_module["unknown"]["files"] += 1
+                    by_module["unknown"]["size"] += size
+            except Exception as e:
+                logger.error(f"Error reading file {filename}: {e}")
+                
+    return {
+        "total_files": total_files,
+        "total_size_bytes": total_size,
+        "temp_files": temp_count,
+        "temp_size_bytes": temp_size,
+        "result_files": result_count,
+        "result_size_bytes": result_size,
+        "last_analysis": last_analysis,
+        "by_module": by_module
+    }
+
+def cleanup_system(module: Optional[str] = None, keep_latest: bool = False):
+    # Identify jobs to keep
+    active_jobs = [jid for jid, j in jobs.items() if j["status"] in ["queued", "processing"]]
+    
+    # Identify latest job for each module if keep_latest is True
+    latest_jobs = {}
+    if keep_latest:
+        for jid, j in jobs.items():
+            m = j["analysis_type"]
+            if m not in latest_jobs or j["created_at"] > jobs[latest_jobs[m]]["created_at"]:
+                latest_jobs[m] = jid
+                
+    files_deleted = 0
+    size_freed = 0
+    
+    for filename in os.listdir(TEMP_DIR):
+        filepath = os.path.join(TEMP_DIR, filename)
+        if os.path.isfile(filepath):
+            try:
+                # Extract job_id
+                job_id = None
+                if filename.startswith("input_"):
+                    parts = filename.split("_")
+                    if len(parts) >= 2:
+                        job_id = parts[1]
+                elif filename.startswith("result_"):
+                    parts = filename.split("_")
+                    if len(parts) >= 2:
+                        job_id = parts[1].replace(".csv", "").replace("_detailed", "")
+                
+                if not job_id:
+                    # Generic temp file
+                    size = os.path.getsize(filepath)
+                    os.remove(filepath)
+                    files_deleted += 1
+                    size_freed += size
+                    continue
+                    
+                # Check if it should be kept
+                if job_id in active_jobs:
+                    continue
+                    
+                job_info = jobs.get(job_id)
+                if not job_info:
+                    # Job info lost, but file exists. Delete it.
+                    size = os.path.getsize(filepath)
+                    os.remove(filepath)
+                    files_deleted += 1
+                    size_freed += size
+                    continue
+                    
+                job_module = job_info["analysis_type"]
+                
+                # Filter by module if specified
+                if module and job_module != module:
+                    continue
+                    
+                # Check keep_latest
+                if keep_latest and job_id == latest_jobs.get(job_module):
+                    continue
+                    
+                # Delete it
+                size = os.path.getsize(filepath)
+                os.remove(filepath)
+                files_deleted += 1
+                size_freed += size
+                
+                # Update job status to reflect result is gone
+                if filename.startswith("result_"):
+                    if "_detailed" in filename:
+                        jobs[job_id]["detailed_result_path"] = None
+                    else:
+                        jobs[job_id]["result_path"] = None
+                        jobs[job_id]["status"] = "cleaned"
+                        jobs[job_id]["message"] = "Los resultados han sido eliminados para liberar espacio."
+            except Exception as e:
+                logger.error(f"Error cleaning file {filename}: {e}")
+            
+    return {"files_deleted": files_deleted, "size_freed_bytes": size_freed}
+
 def check_cancellation(job_id: str):
     if job_id in jobs and jobs[job_id].get("is_cancelled"):
         raise CancellationException("Proceso detenido por el usuario")

@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 class AnalysisStats(BaseModel):
     # NO_RESPONSE fields
@@ -61,3 +62,22 @@ class AnalyzeResponse(BaseModel):
     job_id: str
     status: str
     analysis_type: str
+
+class SystemStats(BaseModel):
+    total_files: int
+    total_size_bytes: int
+    temp_files: int
+    temp_size_bytes: int
+    result_files: int
+    result_size_bytes: int
+    last_analysis: Optional[datetime] = None
+    by_module: Dict[str, Dict[str, Any]]
+
+class CleanupRequest(BaseModel):
+    module: Optional[str] = None
+    keep_latest: bool = False
+
+class CleanupResponse(BaseModel):
+    files_deleted: int
+    size_freed_bytes: int
+    message: str

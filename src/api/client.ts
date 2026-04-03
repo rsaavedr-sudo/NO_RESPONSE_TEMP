@@ -23,13 +23,30 @@ export interface AnalysisStats {
 
 export interface JobStatus {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned';
   progress_percent: number;
   stage: string;
   message: string;
   stats?: AnalysisStats;
   result_url?: string;
   error?: string;
+}
+
+export interface SystemStats {
+  total_files: number;
+  total_size_bytes: number;
+  temp_files: number;
+  temp_size_bytes: number;
+  result_files: number;
+  result_size_bytes: number;
+  last_analysis?: string;
+  by_module: Record<string, { files: number; size: number }>;
+}
+
+export interface CleanupResponse {
+  files_deleted: number;
+  size_freed_bytes: number;
+  message: string;
 }
 
 export const startAnalysis = async (
@@ -85,6 +102,19 @@ export const getDetailedDownloadUrl = (jobId: string) => {
 export const getPreview = async (jobId: string, type: 'summary' | 'detailed' = 'summary', limit: number = 100) => {
   const response = await axios.get(`${API_BASE_URL}/preview/${jobId}`, {
     params: { type, limit }
+  });
+  return response.data;
+};
+
+export const getSystemStats = async () => {
+  const response = await apiClient.get<SystemStats>('/maintenance/stats');
+  return response.data;
+};
+
+export const cleanupSystem = async (module?: string, keepLatest: boolean = false) => {
+  const response = await apiClient.post<CleanupResponse>('/maintenance/cleanup', {
+    module,
+    keep_latest: keepLatest
   });
   return response.data;
 };

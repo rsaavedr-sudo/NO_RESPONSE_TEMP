@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, BarChart2, Activity, PieChart, Settings, ShieldCheck, Target } from 'lucide-react';
+import { Home, BarChart2, Activity, PieChart, Settings, ShieldCheck, Target, Trash2 } from 'lucide-react';
 
-export type ModuleType = 'no_response' | 'asr' | 'no_response_validation' | 'acd' | 'seizure' | 'amd';
+export type ModuleType = 'no_response' | 'asr' | 'no_response_validation' | 'acd' | 'seizure' | 'amd' | 'maintenance';
 
 interface SidebarProps {
   activeModule: ModuleType;
@@ -16,6 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeModule, onModuleChange }
     { id: 'acd' as ModuleType, label: 'ACD Analysis', icon: Activity, disabled: true },
     { id: 'seizure' as ModuleType, label: 'Seizure Rate', icon: PieChart, disabled: true },
     { id: 'amd' as ModuleType, label: 'AMD Analysis', icon: Settings, disabled: true },
+    { id: 'maintenance' as ModuleType, label: 'System Maintenance', icon: Trash2 },
   ];
 
   return (
