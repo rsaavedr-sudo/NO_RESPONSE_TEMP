@@ -31,6 +31,9 @@ class AnalysisStats(BaseModel):
     tp_rows: Optional[int] = None
     fp_rows: Optional[int] = None
     total_cdr_rows: Optional[int] = None
+    original_target_count: Optional[int] = None
+    filtered_target_count: Optional[int] = None
+    reduction_pct: Optional[float] = None
     precision: Optional[float] = None
     error_rate: Optional[float] = None
     total_analizados: Optional[int] = None

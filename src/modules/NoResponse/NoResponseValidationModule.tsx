@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, BarChart3, Activity } from 'lucide-react';
+import { ShieldCheck, BarChart3, Activity, Settings, Hash } from 'lucide-react';
 import { UploadForm } from '../../components/UploadForm';
 import { ProgressBar } from '../../components/ProgressBar';
 import { DownloadButton } from '../../components/DownloadButton';
@@ -22,7 +22,25 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
   const [error, setError] = useState<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleAnalyze = async (files: File[], analysisDays: number, minFrequency: number) => {
+  const [lastFiles, setLastFiles] = useState<File[]>([]);
+  const [lastAnalysisDays, setLastAnalysisDays] = useState(7);
+  const [lastMinFrequency, setLastMinFrequency] = useState(5);
+  const [lastMinTotalFrequency, setLastMinTotalFrequency] = useState(30);
+  const [lastMinAvgDailyFrequency, setLastMinAvgDailyFrequency] = useState(5);
+
+  const handleAnalyze = async (
+    files: File[], 
+    analysisDays: number, 
+    minFrequency: number,
+    minTotalFrequency?: number,
+    minAvgDailyFrequency?: number
+  ) => {
+    setLastFiles(files);
+    setLastAnalysisDays(analysisDays);
+    setLastMinFrequency(minFrequency);
+    if (minTotalFrequency !== undefined) setLastMinTotalFrequency(minTotalFrequency);
+    if (minAvgDailyFrequency !== undefined) setLastMinAvgDailyFrequency(minAvgDailyFrequency);
+
     const totalSize = files.reduce((acc, f) => acc + f.size, 0);
     log('validation', 'iniciado', { files: files.length, totalSize });
     setLastEndpoint(`POST /analyze`);
@@ -40,7 +58,14 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
 
     try {
       // In validation mode, files[0] is the target list
-      const { job_id } = await startAnalysis(files, analysisDays, minFrequency, 'no_response_validation');
+      const { job_id } = await startAnalysis(
+        files, 
+        analysisDays, 
+        minFrequency, 
+        'no_response_validation',
+        minTotalFrequency,
+        minAvgDailyFrequency
+      );
       log('validation', 'job_id recibido', job_id);
       setActiveJobId(job_id);
       startPolling(job_id);
@@ -49,6 +74,18 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
       log('validation', 'upload failed', errorMsg);
       setError(`Error: ${errorMsg}`);
       setJobStatus(null);
+    }
+  };
+
+  const handleRecalculate = () => {
+    if (lastFiles.length > 0) {
+      handleAnalyze(
+        lastFiles, 
+        lastAnalysisDays, 
+        lastMinFrequency, 
+        lastMinTotalFrequency, 
+        lastMinAvgDailyFrequency
+      );
     }
   };
 
@@ -190,6 +227,59 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
               />
               {activeJobId && jobStatus.status === 'completed' && (
                 <MatchedRecordsTable jobId={activeJobId} />
+              )}
+
+              {lastFiles.length > 0 && jobStatus?.status === 'completed' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white p-8 rounded-3xl shadow-xl shadow-indigo-900/5 border-2 border-indigo-100"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                        <Settings className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">Ajuste Fino (Tuning)</h3>
+                        <p className="text-xs text-gray-500">Recalcula la validación con nuevos filtros sobre la lista original.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRecalculate}
+                      disabled={jobStatus?.status === 'processing' || jobStatus?.status === 'queued'}
+                      className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                    >
+                      Recalcular Análisis
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                        <Hash className="w-3 h-3" /> Frecuencia Mínima
+                      </label>
+                      <input
+                        type="number"
+                        value={lastMinTotalFrequency}
+                        onChange={(e) => setLastMinTotalFrequency(parseInt(e.target.value) || 1)}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                        <Activity className="w-3 h-3" /> Promedio Diario Mínimo
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={lastMinAvgDailyFrequency}
+                        onChange={(e) => setLastMinAvgDailyFrequency(parseFloat(e.target.value) || 0.1)}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
               )}
             </>
           ) : (

@@ -133,6 +133,40 @@ export const ValidationStatsPanel: React.FC<ValidationStatsPanelProps> = ({ stat
           </div>
         </div>
       </div>
+
+      {stats.original_target_count !== undefined && (
+        <div className="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm bg-gradient-to-br from-white to-indigo-50/30">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                <Target className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Resultado del Tuning</h3>
+            </div>
+            <div className="px-3 py-1 bg-indigo-600 text-white text-xs font-bold rounded-full">
+              -{stats.reduction_pct}% Reducción
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Originales</p>
+              <p className="text-2xl font-black text-gray-400">{stats.original_target_count?.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-400">Números sin filtros</p>
+            </div>
+            <div className="flex items-center justify-center text-indigo-200">
+              <div className="h-px bg-indigo-100 flex-1"></div>
+              <div className="px-4 text-xs font-bold">FILTRADO</div>
+              <div className="h-px bg-indigo-100 flex-1"></div>
+            </div>
+            <div className="space-y-1 text-right">
+              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Post-Filtro</p>
+              <p className="text-2xl font-black text-indigo-600">{stats.filtered_target_count?.toLocaleString()}</p>
+              <p className="text-[10px] text-indigo-400">Números para validación</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

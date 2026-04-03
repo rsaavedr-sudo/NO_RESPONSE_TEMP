@@ -95,7 +95,14 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return jobs.get(job_id)
 
-def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, min_frequency: int):
+def run_analysis_task(
+    job_id: str, 
+    input_paths: list[str], 
+    analysis_days: int, 
+    min_frequency: int,
+    min_total_frequency: Optional[int] = None,
+    min_avg_daily_frequency: Optional[float] = None
+):
     try:
         job = jobs.get(job_id)
         analysis_type = job.get("analysis_type", "no_response")
@@ -130,11 +137,18 @@ def run_analysis_task(job_id: str, input_paths: list[str], analysis_days: int, m
             # First file is the target list, others are CDRs
             target_path = input_paths[0]
             cdr_paths = input_paths[1:]
+            
+            # Use defaults if not provided
+            min_total = min_total_frequency if min_total_frequency is not None else 30
+            min_avg = min_avg_daily_frequency if min_avg_daily_frequency is not None else 5.0
+            
             stats = analyze_no_response_validation(
                 target_path=target_path,
                 cdr_paths=cdr_paths,
                 output_path=output_path,
                 analysis_days=analysis_days,
+                min_total_frequency=min_total,
+                min_avg_daily_frequency=min_avg,
                 progress_callback=progress_callback,
                 check_cancellation=check_cancel
             )

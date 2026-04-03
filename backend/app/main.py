@@ -38,7 +38,9 @@ async def analyze(
     files: List[UploadFile] = File(...),
     analysis_days: int = Form(7),
     min_frequency: int = Form(5),
-    analysis_type: str = Form("no_response")
+    analysis_type: str = Form("no_response"),
+    min_total_frequency: Optional[int] = Form(None),
+    min_avg_daily_frequency: Optional[float] = Form(None)
 ):
     """
     Starts an asynchronous CDR analysis job with multiple files.
@@ -72,7 +74,9 @@ async def analyze(
         job_id=job_id, 
         input_paths=input_paths, 
         analysis_days=analysis_days, 
-        min_frequency=min_frequency
+        min_frequency=min_frequency,
+        min_total_frequency=min_total_frequency,
+        min_avg_daily_frequency=min_avg_daily_frequency
     )
     
     return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}

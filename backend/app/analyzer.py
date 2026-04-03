@@ -505,6 +505,8 @@ def analyze_no_response_validation(
     cdr_paths: list[str],
     output_path: str,
     analysis_days: int,
+    min_total_frequency: int = 30,
+    min_avg_daily_frequency: float = 5.0,
     chunk_size: int = 500000,
     progress_callback = None,
     check_cancellation = None
@@ -525,11 +527,29 @@ def analyze_no_response_validation(
         if 'e164' not in target_df.columns:
             raise ValueError("El archivo de números debe tener una columna 'e164'.")
             
-        target_numbers = set(target_df['e164'].dropna().unique())
-        total_targets = len(target_numbers)
+        original_target_numbers = set(target_df['e164'].dropna().unique())
+        original_target_count = len(original_target_numbers)
         
-        if total_targets == 0:
+        if original_target_count == 0:
             raise ValueError("No se encontraron números válidos en el archivo de objetivos.")
+
+        # Apply filters if columns exist (they should if coming from NO_RESPONSE Analysis)
+        filtered_df = target_df.copy()
+        if 'frequency' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['frequency'] >= min_total_frequency]
+        
+        if 'avg_daily_frequency' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['avg_daily_frequency'] >= min_avg_daily_frequency]
+            
+        target_numbers = set(filtered_df['e164'].dropna().unique())
+        filtered_target_count = len(target_numbers)
+        reduction_pct = round(((original_target_count - filtered_target_count) / original_target_count * 100), 2) if original_target_count > 0 else 0
+
+        if filtered_target_count == 0:
+            # We don't want to raise error here, just return empty stats or handle it
+            # But for validation to work, we need at least one target
+            logger.warning(f"No targets left after filtering. Original: {original_target_count}, Filtered: 0")
+            # We'll continue but results will be empty
 
         # Track results: number -> has_sip_200 (bool)
         # We only care about numbers in target_numbers
@@ -626,7 +646,10 @@ def analyze_no_response_validation(
             'filas_invalidas_descartadas': 0,
             'first_date': start_date.strftime('%Y-%m-%d'),
             'last_date': max_date.strftime('%Y-%m-%d'),
-            'cdr_stats': cdr_stats
+            'cdr_stats': cdr_stats,
+            'original_target_count': original_target_count,
+            'filtered_target_count': filtered_target_count,
+            'reduction_pct': reduction_pct
         }
 
         # Pass 3: Extract detailed CDR matches

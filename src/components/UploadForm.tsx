@@ -1,9 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, X, Settings, Calendar, Hash, Target } from 'lucide-react';
+import { Upload, FileText, X, Settings, Calendar, Hash, Target, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface UploadFormProps {
-  onAnalyze: (files: File[], analysisDays: number, minFrequency: number) => void;
+  onAnalyze: (
+    files: File[], 
+    analysisDays: number, 
+    minFrequency: number, 
+    minTotalFrequency?: number, 
+    minAvgDailyFrequency?: number
+  ) => void;
   onCancel?: () => void;
   disabled?: boolean;
   hideMinFrequency?: boolean;
@@ -21,6 +27,8 @@ export const UploadForm: React.FC<UploadFormProps> = ({
   const [targetFile, setTargetFile] = useState<File | null>(null);
   const [analysisDays, setAnalysisDays] = useState(7);
   const [minFrequency, setMinFrequency] = useState(5);
+  const [minTotalFrequency, setMinTotalFrequency] = useState(30);
+  const [minAvgDailyFrequency, setMinAvgDailyFrequency] = useState(5);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetInputRef = useRef<HTMLInputElement>(null);
@@ -66,7 +74,13 @@ export const UploadForm: React.FC<UploadFormProps> = ({
     e.preventDefault();
     if (isValidationMode) {
       if (targetFile && files.length > 0) {
-        onAnalyze([targetFile, ...files], analysisDays, minFrequency);
+        onAnalyze(
+          [targetFile, ...files], 
+          analysisDays, 
+          minFrequency, 
+          minTotalFrequency, 
+          minAvgDailyFrequency
+        );
       }
     } else if (files.length > 0) {
       onAnalyze(files, analysisDays, minFrequency);
@@ -213,7 +227,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({
         )}
       </AnimatePresence>
 
-      <div className={`grid grid-cols-1 ${hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
+      <div className={`grid grid-cols-1 ${isValidationMode ? 'md:grid-cols-3' : hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
             <Calendar className="w-4 h-4 text-blue-500" />
@@ -228,10 +242,44 @@ export const UploadForm: React.FC<UploadFormProps> = ({
             className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
             disabled={disabled}
           />
-          <p className="text-xs text-gray-500">Ventana temporal desde la última fecha del archivo.</p>
+          <p className="text-xs text-gray-500">Ventana temporal desde la última fecha.</p>
         </div>
 
-        {!hideMinFrequency && (
+        {isValidationMode ? (
+          <>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Hash className="w-4 h-4 text-indigo-500" />
+                Min Frequency
+              </label>
+              <input
+                type="number"
+                value={minTotalFrequency}
+                onChange={(e) => setMinTotalFrequency(parseInt(e.target.value) || 1)}
+                min="1"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                disabled={disabled}
+              />
+              <p className="text-xs text-gray-500">Frecuencia total mínima.</p>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Activity className="w-4 h-4 text-purple-500" />
+                Avg Daily Freq
+              </label>
+              <input
+                type="number"
+                value={minAvgDailyFrequency}
+                onChange={(e) => setMinAvgDailyFrequency(parseFloat(e.target.value) || 0.1)}
+                min="0.1"
+                step="0.1"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
+                disabled={disabled}
+              />
+              <p className="text-xs text-gray-500">Promedio diario mínimo.</p>
+            </div>
+          </>
+        ) : !hideMinFrequency && (
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Hash className="w-4 h-4 text-blue-500" />
@@ -245,7 +293,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
               disabled={disabled}
             />
-            <p className="text-xs text-gray-500">Mínimo de llamadas por número para clasificar.</p>
+            <p className="text-xs text-gray-500">Mínimo de llamadas por número.</p>
           </div>
         )}
       </div>
