@@ -2,7 +2,7 @@ import os
 import shutil
 import logging
 import asyncio
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
@@ -28,11 +28,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/health")
+api_router = APIRouter(prefix="/api")
+
+@api_router.get("/health")
 async def health():
     return {"status": "ok", "version": "2.0.0"}
 
-@app.post("/analyze", response_model=AnalyzeResponse)
+@api_router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
@@ -90,7 +92,7 @@ async def analyze(
     
     return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}
 
-@app.get("/jobs/{job_id}", response_model=JobStatus)
+@api_router.get("/jobs/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
     """
     Returns the current status of a job.
@@ -120,7 +122,7 @@ async def get_job_status(job_id: str):
         error=safe_job["error"]
     )
 
-@app.get("/download_detailed/{job_id}")
+@api_router.get("/download_detailed/{job_id}")
 async def download_detailed_result(job_id: str):
     """
     Downloads the detailed result CSV for a completed job.
@@ -139,7 +141,7 @@ async def download_detailed_result(job_id: str):
         media_type="text/csv"
     )
 
-@app.get("/preview/{job_id}")
+@api_router.get("/preview/{job_id}")
 async def preview_result(job_id: str, type: str = "summary", limit: int = 100):
     """
     Returns a preview (first N rows) of the result CSV.
@@ -160,7 +162,7 @@ async def preview_result(job_id: str, type: str = "summary", limit: int = 100):
         logger.error(f"Error reading preview: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error reading preview: {str(e)}")
 
-@app.post("/jobs/{job_id}/cancel")
+@api_router.post("/jobs/{job_id}/cancel")
 async def cancel_analysis(job_id: str):
     """
     Cancels an ongoing analysis job.
@@ -175,11 +177,11 @@ async def cancel_analysis(job_id: str):
     cancel_job(job_id)
     return {"status": "ok", "message": "Proceso detenido por el usuario"}
 
-@app.get("/maintenance/stats", response_model=SystemStats)
+@api_router.get("/maintenance/stats", response_model=SystemStats)
 async def get_stats():
     return get_system_stats()
 
-@app.post("/maintenance/cleanup", response_model=CleanupResponse)
+@api_router.post("/maintenance/cleanup", response_model=CleanupResponse)
 async def cleanup(request: CleanupRequest):
     result = cleanup_system(module=request.module, keep_latest=request.keep_latest)
     return {
@@ -188,7 +190,7 @@ async def cleanup(request: CleanupRequest):
         "message": f"Limpieza completada. Se eliminaron {result['files_deleted']} archivos."
     }
 
-@app.get("/jobs/{job_id}/stream")
+@api_router.get("/jobs/{job_id}/stream")
 async def stream_job_status(job_id: str):
     """
     Server-Sent Events endpoint for real-time job updates.
@@ -244,7 +246,7 @@ async def stream_job_status(job_id: str):
 
     return EventSourceResponse(event_generator())
 
-@app.get("/download/{job_id}")
+@api_router.get("/download/{job_id}")
 async def download_result(job_id: str):
     """
     Downloads the result CSV for a completed job.
@@ -261,6 +263,8 @@ async def download_result(job_id: str):
         filename=f"analisis_cdr_{job_id}.csv",
         media_type="text/csv"
     )
+
+app.include_router(api_router)
 
 # Optional: Root endpoint to serve frontend if needed
 # But we'll use the platform's Node.js server for that.

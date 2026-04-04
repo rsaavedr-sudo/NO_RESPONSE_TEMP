@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -72,7 +72,7 @@ export const startAnalysis = async (
     formData.append('min_avg_daily_frequency', minAvgDailyFrequency.toString());
   }
 
-  const response = await apiClient.post('/analyze', formData, {
+  const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -82,12 +82,12 @@ export const startAnalysis = async (
 };
 
 export const cancelAnalysis = async (jobId: string) => {
-  const response = await apiClient.post(`/jobs/${jobId}/cancel`);
+  const response = await axios.post(`${API_BASE_URL}/jobs/${jobId}/cancel`);
   return response.data;
 };
 
 export const getJobStatus = async (jobId: string) => {
-  const response = await apiClient.get<JobStatus>(`/jobs/${jobId}`);
+  const response = await axios.get<JobStatus>(`${API_BASE_URL}/jobs/${jobId}`);
   return response.data;
 };
 
@@ -100,19 +100,19 @@ export const getDetailedDownloadUrl = (jobId: string) => {
 };
 
 export const getPreview = async (jobId: string, type: 'summary' | 'detailed' = 'summary', limit: number = 100) => {
-  const response = await apiClient.get(`/preview/${jobId}`, {
+  const response = await axios.get(`${API_BASE_URL}/preview/${jobId}`, {
     params: { type, limit }
   });
   return response.data;
 };
 
 export const getSystemStats = async () => {
-  const response = await apiClient.get<SystemStats>('/maintenance/stats');
+  const response = await axios.get<SystemStats>(`${API_BASE_URL}/maintenance/stats`);
   return response.data;
 };
 
 export const cleanupSystem = async (module?: string, keepLatest: boolean = false) => {
-  const response = await apiClient.post<CleanupResponse>('/maintenance/cleanup', {
+  const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup`, {
     module,
     keep_latest: keepLatest
   });
