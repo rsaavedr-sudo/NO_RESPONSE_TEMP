@@ -112,7 +112,7 @@ def analyze_cdr_chunked(
             progress_callback(30, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
 
         # We'll use a dictionary to accumulate stats per e164
-        # e164 -> {total, sip_counts, first_date, last_date, days}
+        # e164 -> {total, sip_counts, first_date, last_date, days, total_secs}
         stats = {}
         all_sip_codes = set()
         
@@ -122,8 +122,8 @@ def analyze_cdr_chunked(
             for chunk in pd.read_csv(
                 input_path, 
                 sep=';', 
-                usecols=['call_date', 'e164', 'sip_code'], 
-                dtype={'e164': str}, # Ensure e164 is treated as string
+                usecols=['call_date', 'e164', 'sip_code', 'tot_secs'], 
+                dtype={'e164': str, 'sip_code': float, 'tot_secs': float}, # Ensure types
                 chunksize=chunk_size,
                 engine='c'
             ):
@@ -134,7 +134,7 @@ def analyze_cdr_chunked(
                 
                 # Basic cleaning
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
+                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
                 
                 if chunk.empty:
                     continue
@@ -162,7 +162,8 @@ def analyze_cdr_chunked(
                     total=('sip_code', 'count'),
                     min_dt=('call_date', 'min'),
                     max_dt=('call_date', 'max'),
-                    unique_days=('date_only', lambda x: set(x))
+                    unique_days=('date_only', lambda x: set(x)),
+                    sum_secs=('tot_secs', 'sum')
                 )
                 
                 # Merge with global stats
@@ -173,13 +174,15 @@ def analyze_cdr_chunked(
                             'sip_counts': {},
                             'first_date': None, 
                             'last_date': None,
-                            'days': set()
+                            'days': set(),
+                            'total_secs': 0
                         }
                     stats[e164]['sip_counts'][sip_code] = stats[e164]['sip_counts'].get(sip_code, 0) + count
                 
                 for e164, row in basic_stats_chunk.iterrows():
                     s = stats[e164]
                     s['total'] += row['total']
+                    s['total_secs'] += row['sum_secs']
                     if s['first_date'] is None or row['min_dt'] < s['first_date']:
                         s['first_date'] = row['min_dt']
                     if s['last_date'] is None or row['max_dt'] > s['last_date']:
@@ -206,6 +209,11 @@ def analyze_cdr_chunked(
         numeros_sin_no_response = 0
         global_first_date = None
         global_last_date = None
+
+        # LineState counters
+        inactiva_count = 0
+        indeterminada_count = 0
+        activa_count = 0
 
         # Sort sip codes for consistent column order
         sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
@@ -250,6 +258,18 @@ def analyze_cdr_chunked(
             num_days = len(data['days'])
             avg_daily_frequency = total / num_days if num_days > 0 else 0
 
+            # LineState Calculation
+            avg_duration = data['total_secs'] / total if total > 0 else 0
+            if avg_duration < 5:
+                line_state = "Inactiva"
+                inactiva_count += 1
+            elif avg_duration < 10:
+                line_state = "Indeterminada"
+                indeterminada_count += 1
+            else:
+                line_state = "Activa"
+                activa_count += 1
+
             res_row = {
                 'e164': e164,
                 'first_date': data['first_date'].strftime('%Y-%m-%d'),
@@ -257,6 +277,7 @@ def analyze_cdr_chunked(
                 'avg_daily_frequency': round(avg_daily_frequency, 2),
                 'frequency': total,
                 'pct_404': round(pct_404_val, 2),
+                'LineState': line_state,
                 'status': 'NO_RESPONSE_TEMP'
             }
             
@@ -272,7 +293,7 @@ def analyze_cdr_chunked(
 
         # Write to CSV
         # Ensure columns are in requested order and headers are always present
-        base_cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'status']
+        base_cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'LineState', 'status']
         dynamic_cols = [f'pct_{sc}' for sc in sorted_sip_codes if sc != 404]
         cols = base_cols + dynamic_cols
         
@@ -290,6 +311,12 @@ def analyze_cdr_chunked(
             'filas_invalidas_descartadas': invalid_rows,
             'numeros_con_no_response': numeros_con_no_response,
             'numeros_sin_no_response': numeros_sin_no_response,
+            'inactiva_count': inactiva_count,
+            'indeterminada_count': indeterminada_count,
+            'activa_count': activa_count,
+            'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
             'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None
         }

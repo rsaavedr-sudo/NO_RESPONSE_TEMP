@@ -7,6 +7,7 @@ import { StatsPanel } from '../../components/StatsPanel';
 import { DownloadButton } from '../../components/DownloadButton';
 import { ErrorAlert } from '../../components/ErrorAlert';
 import { NoResponsePieChart } from '../../components/NoResponsePieChart';
+import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { AnalysisCriteria } from '../../components/AnalysisCriteria';
 import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
@@ -171,10 +172,17 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
 
           <AnimatePresence>
             {jobStatus?.status === 'completed' && (
-              <NoResponsePieChart 
-                conNoResponse={jobStatus.stats?.numeros_con_no_response || 0} 
-                sinNoResponse={jobStatus.stats?.numeros_sin_no_response || 0} 
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <NoResponsePieChart 
+                  conNoResponse={jobStatus.stats?.numeros_con_no_response || 0} 
+                  sinNoResponse={jobStatus.stats?.numeros_sin_no_response || 0} 
+                />
+                <LineStatePieChart 
+                  inactiva={jobStatus.stats?.inactiva_count || 0}
+                  indeterminada={jobStatus.stats?.indeterminada_count || 0}
+                  activa={jobStatus.stats?.activa_count || 0}
+                />
+              </div>
             )}
           </AnimatePresence>
 
