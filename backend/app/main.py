@@ -11,7 +11,7 @@ import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse
 from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs, cancel_job, get_system_stats, cleanup_system
-from .utils import to_json_safe
+from .utils import to_json_safe, parse_float
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,17 +36,26 @@ async def health():
 async def analyze(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
-    analysis_days: int = Form(7),
-    min_frequency: int = Form(5),
+    analysis_days: str = Form("7"),
+    min_frequency: str = Form("5"),
     analysis_type: str = Form("no_response"),
-    min_total_frequency: Optional[int] = Form(None),
-    min_avg_daily_frequency: Optional[float] = Form(None)
+    min_total_frequency: Optional[str] = Form(None),
+    min_avg_daily_frequency: Optional[str] = Form(None)
 ):
     """
     Starts an asynchronous CDR analysis job with multiple files.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
+    
+    # Robust parsing of numeric fields
+    try:
+        days = int(parse_float(analysis_days, "Días de Análisis"))
+        min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
+        min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
+        min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
     job_id = create_job(analysis_type=analysis_type)
     input_paths = []
@@ -73,10 +82,10 @@ async def analyze(
         run_analysis_task, 
         job_id=job_id, 
         input_paths=input_paths, 
-        analysis_days=analysis_days, 
-        min_frequency=min_frequency,
-        min_total_frequency=min_total_frequency,
-        min_avg_daily_frequency=min_avg_daily_frequency
+        analysis_days=days, 
+        min_frequency=min_freq,
+        min_total_frequency=min_total,
+        min_avg_daily_frequency=min_avg
     )
     
     return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}

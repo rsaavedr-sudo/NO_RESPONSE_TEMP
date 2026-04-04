@@ -6,6 +6,27 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+def safe_to_float(series, col_name, file_path=None):
+    """
+    Safely converts a series to float, handling commas and providing context on error.
+    """
+    if series.dtype == object:
+        # Normalize: trim and replace comma only for strings
+        series = series.apply(lambda x: x.strip().replace(',', '.') if isinstance(x, str) else x)
+    
+    converted = pd.to_numeric(series, errors='coerce')
+    
+    # Check for failures (NaNs that weren't NaNs before)
+    mask = converted.isna() & series.notna()
+    if mask.any():
+        # Find first failure
+        first_fail_idx = series[mask].index[0]
+        fail_val = series.loc[first_fail_idx]
+        file_info = f" en el archivo '{os.path.basename(file_path)}'" if file_path else ""
+        raise ValueError(f"Error al convertir la columna '{col_name}'{file_info}. Valor inválido: '{fail_val}'")
+    
+    return converted
+
 DDD_REGION_MAP = {
     '11': 'São Paulo', '12': 'São Paulo', '13': 'São Paulo', '14': 'São Paulo', '15': 'São Paulo', '16': 'São Paulo', '17': 'São Paulo', '18': 'São Paulo', '19': 'São Paulo',
     '21': 'Rio de Janeiro', '22': 'Rio de Janeiro', '24': 'Rio de Janeiro',
@@ -123,7 +144,7 @@ def analyze_cdr_chunked(
                 input_path, 
                 sep=';', 
                 usecols=['call_date', 'e164', 'sip_code', 'tot_secs'], 
-                dtype={'e164': str, 'sip_code': float, 'tot_secs': float}, # Ensure types
+                dtype={'e164': str}, # Read numeric as object/str initially
                 chunksize=chunk_size,
                 engine='c'
             ):
@@ -134,6 +155,11 @@ def analyze_cdr_chunked(
                 
                 # Basic cleaning
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                
+                # Robust numeric conversion
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path)
+                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', input_path)
+                
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
                 
                 if chunk.empty:
@@ -405,7 +431,7 @@ def analyze_asr_chunked(
                 input_path, 
                 sep=';', 
                 usecols=cols, 
-                dtype={'e164': str, 'client_code': str, 'route_code': str},
+                dtype={'e164': str, 'client_code': str, 'route_code': str}, # Read sip_code as object
                 chunksize=chunk_size,
                 engine='c'
             ):
@@ -414,6 +440,10 @@ def analyze_asr_chunked(
                 
                 rows_processed += len(chunk)
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                
+                # Robust numeric conversion
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path)
+                
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
                 if chunk.empty: continue
                 
@@ -563,9 +593,11 @@ def analyze_no_response_validation(
         # Apply filters if columns exist (they should if coming from NO_RESPONSE Analysis)
         filtered_df = target_df.copy()
         if 'frequency' in filtered_df.columns:
+            filtered_df['frequency'] = safe_to_float(filtered_df['frequency'], 'frequency', target_path)
             filtered_df = filtered_df[filtered_df['frequency'] >= min_total_frequency]
         
         if 'avg_daily_frequency' in filtered_df.columns:
+            filtered_df['avg_daily_frequency'] = safe_to_float(filtered_df['avg_daily_frequency'], 'avg_daily_frequency', target_path)
             filtered_df = filtered_df[filtered_df['avg_daily_frequency'] >= min_avg_daily_frequency]
             
         target_numbers = set(filtered_df['e164'].dropna().unique())
@@ -616,7 +648,7 @@ def analyze_no_response_validation(
                 cdr_path, 
                 sep=';', 
                 usecols=['call_date', 'e164', 'sip_code'], 
-                dtype={'e164': str},
+                dtype={'e164': str}, # Read sip_code as object
                 chunksize=chunk_size
             ):
                 if check_cancellation: check_cancellation()
@@ -626,6 +658,10 @@ def analyze_no_response_validation(
                 rows_processed += chunk_len
                 
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+                
+                # Robust numeric conversion
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', cdr_path)
+                
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
                 chunk = chunk[chunk['call_date'] >= start_date]
                 
@@ -692,10 +728,14 @@ def analyze_no_response_validation(
             for chunk in pd.read_csv(
                 cdr_path, 
                 sep=';', 
-                dtype={'e164': str},
+                dtype={'e164': str}, # Read other columns as object
                 chunksize=chunk_size
             ):
                 if check_cancellation: check_cancellation()
+                
+                # Robust numeric conversion if sip_code exists in this chunk
+                if 'sip_code' in chunk.columns:
+                    chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', cdr_path)
                 
                 # Filter chunk to only include target numbers
                 matched_chunk = chunk[chunk['e164'].isin(target_numbers)].copy()

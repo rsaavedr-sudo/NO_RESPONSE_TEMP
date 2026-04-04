@@ -25,3 +25,21 @@ def to_json_safe(obj: Any) -> Any:
         # Handle other numpy scalars
         return obj.item()
     return obj
+
+def parse_float(val: Any, field_name: str = "campo") -> float:
+    """
+    Parses a value to float, handling commas and whitespace.
+    """
+    if val is None or val == "":
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        original_val = val
+        # Trim and replace comma with dot
+        normalized = val.strip().replace(',', '.')
+        try:
+            return float(normalized)
+        except ValueError:
+            raise ValueError(f"Error al convertir el {field_name}. Valor inválido: '{original_val}'")
+    return 0.0
