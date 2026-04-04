@@ -8,11 +8,12 @@ logger = logging.getLogger(__name__)
 
 def safe_to_float(series, col_name, file_path=None):
     """
-    Safely converts a series to float, handling commas and providing context on error.
+    Safely converts a series to float, handling thousands/decimal separators and providing row-level context on error.
     """
     if series.dtype == object:
-        # Normalize: trim and replace comma only for strings
-        series = series.apply(lambda x: x.strip().replace(',', '.') if isinstance(x, str) else x)
+        # Normalize: trim and handle separators
+        from .utils import robust_numeric_normalize
+        series = series.apply(lambda x: robust_numeric_normalize(x) if isinstance(x, str) else x)
     
     converted = pd.to_numeric(series, errors='coerce')
     
@@ -23,7 +24,9 @@ def safe_to_float(series, col_name, file_path=None):
         first_fail_idx = series[mask].index[0]
         fail_val = series.loc[first_fail_idx]
         file_info = f" en el archivo '{os.path.basename(file_path)}'" if file_path else ""
-        raise ValueError(f"Error al convertir la columna '{col_name}'{file_info}. Valor inválido: '{fail_val}'")
+        # Index is 0-based, so add 2 (1 for header, 1 for 1-based index)
+        row_info = f", fila {first_fail_idx + 2}"
+        raise ValueError(f"Error al convertir la columna '{col_name}'{file_info}{row_info}. Valor inválido: '{fail_val}'")
     
     return converted
 
