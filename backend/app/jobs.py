@@ -4,12 +4,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-from .analyzer import (
-    analyze_cdr_chunked, 
-    analyze_asr_chunked, 
-    analyze_no_response_validation,
-    analyze_non_respond_linestate
-)
+from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
 from .utils import to_json_safe
 
 logger = logging.getLogger(__name__)
@@ -64,7 +59,6 @@ def get_system_stats():
         "no_response": {"files": 0, "size": 0},
         "asr": {"files": 0, "size": 0},
         "no_response_validation": {"files": 0, "size": 0},
-        "non_respond_linestate": {"files": 0, "size": 0},
         "unknown": {"files": 0, "size": 0}
     }
     
@@ -303,13 +297,6 @@ def run_analysis_task(
                 analysis_days=analysis_days,
                 min_total_frequency=min_total,
                 min_avg_daily_frequency=min_avg,
-                progress_callback=progress_callback,
-                check_cancellation=check_cancel
-            )
-        elif analysis_type == "non_respond_linestate":
-            stats = analyze_non_respond_linestate(
-                input_paths=input_paths,
-                output_path=output_path,
                 progress_callback=progress_callback,
                 check_cancellation=check_cancel
             )

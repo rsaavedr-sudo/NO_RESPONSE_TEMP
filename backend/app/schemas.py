@@ -39,15 +39,6 @@ class AnalysisStats(BaseModel):
     error_rate: Optional[float] = None
     total_analizados: Optional[int] = None
     pct_con_respuesta: Optional[float] = None
-
-    # LineState fields
-    total_numeros_analizados: Optional[int] = None
-    inactiva_count: Optional[int] = None
-    indeterminada_count: Optional[int] = None
-    activa_count: Optional[int] = None
-    inactiva_pct: Optional[float] = None
-    indeterminada_pct: Optional[float] = None
-    activa_pct: Optional[float] = None
     
     # Common fields
     filas_invalidas_descartadas: int

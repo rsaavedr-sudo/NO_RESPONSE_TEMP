@@ -33,15 +33,6 @@ export interface AnalysisStats {
   total_analizados?: number;
   pct_con_respuesta?: number;
 
-  // LineState fields
-  total_numeros_analizados?: number;
-  inactiva_count?: number;
-  indeterminada_count?: number;
-  activa_count?: number;
-  inactiva_pct?: number;
-  indeterminada_pct?: number;
-  activa_pct?: number;
-
   // Common fields
   filas_invalidas_descartadas: number;
   first_date?: string;

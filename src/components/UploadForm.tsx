@@ -6,14 +6,11 @@ interface UploadFormProps {
   onAnalyze: (
     files: File[], 
     analysisDays: number, 
-    minFrequency: number, 
-    minTotalFrequency?: number, 
-    minAvgDailyFrequency?: number
+    minFrequency: number
   ) => void;
   onCancel?: () => void;
   disabled?: boolean;
   hideMinFrequency?: boolean;
-  hideCriteria?: boolean;
   isValidationMode?: boolean;
 }
 
@@ -22,7 +19,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({
   onCancel, 
   disabled, 
   hideMinFrequency,
-  hideCriteria,
   isValidationMode 
 }) => {
   const [files, setFiles] = useState<File[]>([]);
@@ -229,8 +225,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({
         )}
       </AnimatePresence>
 
-      {!hideCriteria && (
-        <div className={`grid grid-cols-1 ${isValidationMode ? 'md:grid-cols-3' : hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
+      <div className={`grid grid-cols-1 ${isValidationMode ? 'md:grid-cols-3' : hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Calendar className="w-4 h-4 text-blue-500" />
@@ -300,7 +295,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({
             </div>
           )}
         </div>
-      )}
 
       <div className="flex gap-4">
         <button
