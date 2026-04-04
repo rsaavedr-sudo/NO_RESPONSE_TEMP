@@ -9,6 +9,7 @@ import { Sidebar, ModuleType } from './components/Sidebar';
 import { NoResponseModule } from './modules/NoResponse/NoResponseModule';
 import { ASRModule } from './modules/ASR/AsrModule';
 import { NoResponseValidationModule } from './modules/NoResponse/NoResponseValidationModule';
+import { NonRespondLineStateModule } from './modules/NonRespond/NonRespondLineStateModule';
 import { MaintenanceModule } from './modules/Maintenance/MaintenanceModule';
 
 const App: React.FC = () => {
@@ -37,6 +38,8 @@ const App: React.FC = () => {
         return <NoResponseModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'no_response_validation':
         return <NoResponseValidationModule log={log} setLastEndpoint={setLastEndpoint} />;
+      case 'non_respond_linestate':
+        return <NonRespondLineStateModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'asr':
         return <ASRModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'maintenance':

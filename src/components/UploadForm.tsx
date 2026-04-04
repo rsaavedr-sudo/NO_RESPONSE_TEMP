@@ -13,6 +13,7 @@ interface UploadFormProps {
   onCancel?: () => void;
   disabled?: boolean;
   hideMinFrequency?: boolean;
+  hideCriteria?: boolean;
   isValidationMode?: boolean;
 }
 
@@ -21,6 +22,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({
   onCancel, 
   disabled, 
   hideMinFrequency,
+  hideCriteria,
   isValidationMode 
 }) => {
   const [files, setFiles] = useState<File[]>([]);
@@ -227,76 +229,78 @@ export const UploadForm: React.FC<UploadFormProps> = ({
         )}
       </AnimatePresence>
 
-      <div className={`grid grid-cols-1 ${isValidationMode ? 'md:grid-cols-3' : hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <Calendar className="w-4 h-4 text-blue-500" />
-            Días de Análisis
-          </label>
-          <input
-            type="number"
-            value={analysisDays}
-            onChange={(e) => setAnalysisDays(parseInt(e.target.value) || 1)}
-            min="1"
-            max="365"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            disabled={disabled}
-          />
-          <p className="text-xs text-gray-500">Ventana temporal desde la última fecha.</p>
-        </div>
-
-        {isValidationMode ? (
-          <>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Hash className="w-4 h-4 text-indigo-500" />
-                Min Frequency
-              </label>
-              <input
-                type="number"
-                value={minTotalFrequency}
-                onChange={(e) => setMinTotalFrequency(parseInt(e.target.value) || 1)}
-                min="1"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                disabled={disabled}
-              />
-              <p className="text-xs text-gray-500">Frecuencia total mínima.</p>
-            </div>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Activity className="w-4 h-4 text-purple-500" />
-                Avg Daily Freq
-              </label>
-              <input
-                type="number"
-                value={minAvgDailyFrequency}
-                onChange={(e) => setMinAvgDailyFrequency(parseFloat(e.target.value) || 0.1)}
-                min="0.1"
-                step="0.1"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
-                disabled={disabled}
-              />
-              <p className="text-xs text-gray-500">Promedio diario mínimo.</p>
-            </div>
-          </>
-        ) : !hideMinFrequency && (
+      {!hideCriteria && (
+        <div className={`grid grid-cols-1 ${isValidationMode ? 'md:grid-cols-3' : hideMinFrequency ? '' : 'md:grid-cols-2'} gap-6`}>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <Hash className="w-4 h-4 text-blue-500" />
-              Frecuencia Mínima
+              <Calendar className="w-4 h-4 text-blue-500" />
+              Días de Análisis
             </label>
             <input
               type="number"
-              value={minFrequency}
-              onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
+              value={analysisDays}
+              onChange={(e) => setAnalysisDays(parseInt(e.target.value) || 1)}
               min="1"
+              max="365"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
               disabled={disabled}
             />
-            <p className="text-xs text-gray-500">Mínimo de llamadas por número.</p>
+            <p className="text-xs text-gray-500">Ventana temporal desde la última fecha.</p>
           </div>
-        )}
-      </div>
+
+          {isValidationMode ? (
+            <>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <Hash className="w-4 h-4 text-indigo-500" />
+                  Min Frequency
+                </label>
+                <input
+                  type="number"
+                  value={minTotalFrequency}
+                  onChange={(e) => setMinTotalFrequency(parseInt(e.target.value) || 1)}
+                  min="1"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  disabled={disabled}
+                />
+                <p className="text-xs text-gray-500">Frecuencia total mínima.</p>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <Activity className="w-4 h-4 text-purple-500" />
+                  Avg Daily Freq
+                </label>
+                <input
+                  type="number"
+                  value={minAvgDailyFrequency}
+                  onChange={(e) => setMinAvgDailyFrequency(parseFloat(e.target.value) || 0.1)}
+                  min="0.1"
+                  step="0.1"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all"
+                  disabled={disabled}
+                />
+                <p className="text-xs text-gray-500">Promedio diario mínimo.</p>
+              </div>
+            </>
+          ) : !hideMinFrequency && (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Hash className="w-4 h-4 text-blue-500" />
+                Frecuencia Mínima
+              </label>
+              <input
+                type="number"
+                value={minFrequency}
+                onChange={(e) => setMinFrequency(parseInt(e.target.value) || 1)}
+                min="1"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                disabled={disabled}
+              />
+              <p className="text-xs text-gray-500">Mínimo de llamadas por número.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-4">
         <button
