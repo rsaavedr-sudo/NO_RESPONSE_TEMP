@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -72,7 +72,7 @@ export const startAnalysis = async (
     formData.append('min_avg_daily_frequency', minAvgDailyFrequency.toString());
   }
 
-  const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
+  const response = await apiClient.post('/analyze', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -100,7 +100,7 @@ export const getDetailedDownloadUrl = (jobId: string) => {
 };
 
 export const getPreview = async (jobId: string, type: 'summary' | 'detailed' = 'summary', limit: number = 100) => {
-  const response = await axios.get(`${API_BASE_URL}/preview/${jobId}`, {
+  const response = await apiClient.get(`/preview/${jobId}`, {
     params: { type, limit }
   });
   return response.data;

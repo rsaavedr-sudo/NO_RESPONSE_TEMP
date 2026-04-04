@@ -7,6 +7,7 @@ import { DownloadButton } from '../../components/DownloadButton';
 import { ErrorAlert } from '../../components/ErrorAlert';
 import { ValidationStatsPanel } from '../../components/ValidationStatsPanel';
 import { ValidationPieChart } from '../../components/ValidationPieChart';
+import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
 import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
@@ -225,6 +226,24 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                 fp={jobStatus.stats.fp_rows || 0} 
                 totalCdr={jobStatus.stats.total_cdr_rows || 0}
               />
+
+              {jobStatus.stats.tp_line_state && (
+                <div className="space-y-4">
+                  <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                    <h3 className="text-sm font-bold text-indigo-900 uppercase tracking-wider">
+                      Dimensión LineState (Matches TP)
+                    </h3>
+                    <p className="text-xs text-indigo-600 mt-1">
+                      Análisis de comportamiento para los {jobStatus.stats.tp_count?.toLocaleString()} números confirmados como NO_RESPONSE.
+                    </p>
+                  </div>
+                  <LineStatePieChart 
+                    inactiva={jobStatus.stats.tp_line_state.inactiva}
+                    indeterminada={jobStatus.stats.tp_line_state.indeterminada}
+                    activa={jobStatus.stats.tp_line_state.activa}
+                  />
+                </div>
+              )}
               {activeJobId && jobStatus.status === 'completed' && (
                 <MatchedRecordsTable jobId={activeJobId} />
               )}

@@ -39,6 +39,7 @@ class AnalysisStats(BaseModel):
     error_rate: Optional[float] = None
     total_analizados: Optional[int] = None
     pct_con_respuesta: Optional[float] = None
+    tp_line_state: Optional[Dict[str, int]] = None
 
     # LineState fields
     inactiva_count: Optional[int] = None

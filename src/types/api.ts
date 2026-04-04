@@ -32,6 +32,11 @@ export interface AnalysisStats {
   error_rate?: number;
   total_analizados?: number;
   pct_con_respuesta?: number;
+  tp_line_state?: {
+    inactiva: number;
+    indeterminada: number;
+    activa: number;
+  };
 
   // LineState fields
   inactiva_count?: number;

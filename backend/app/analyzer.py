@@ -616,6 +616,8 @@ def analyze_no_response_validation(
         # Track results: number -> has_sip_200 (bool)
         # We only care about numbers in target_numbers
         results = {num: False for num in target_numbers}
+        # Track stats for LineState: number -> {total_calls, total_secs}
+        validation_stats = {num: {'total': 0, 'secs': 0} for num in target_numbers}
         
         # Pass 1: Find max_date to apply window
         if progress_callback:
@@ -635,7 +637,7 @@ def analyze_no_response_validation(
 
         start_date = max_date - timedelta(days=analysis_days)
 
-        # Pass 2: Scan CDR for SIP 200
+        # Pass 2: Scan CDR for SIP 200 and LineState stats
         if progress_callback:
             progress_callback(20, "processing_cdr", f"Analizando CDR (Ventana: {start_date.date()} a {max_date.date()})...")
 
@@ -650,8 +652,8 @@ def analyze_no_response_validation(
             for chunk in pd.read_csv(
                 cdr_path, 
                 sep=';', 
-                usecols=['call_date', 'e164', 'sip_code'], 
-                dtype={'e164': str}, # Read sip_code as object
+                usecols=['call_date', 'e164', 'sip_code', 'tot_secs'], 
+                dtype={'e164': str}, # Read sip_code/tot_secs as object
                 chunksize=chunk_size
             ):
                 if check_cancellation: check_cancellation()
@@ -664,8 +666,9 @@ def analyze_no_response_validation(
                 
                 # Robust numeric conversion
                 chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', cdr_path)
+                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', cdr_path)
                 
-                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
+                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
                 chunk = chunk[chunk['call_date'] >= start_date]
                 
                 # Filter chunk to only include target numbers
@@ -673,6 +676,16 @@ def analyze_no_response_validation(
                 file_matched_rows += len(matched_in_chunk)
                 
                 if not matched_in_chunk.empty:
+                    # Update validation stats for LineState
+                    # Grouping by e164 to aggregate counts and durations
+                    agg = matched_in_chunk.groupby('e164').agg(
+                        count=('tot_secs', 'count'),
+                        secs=('tot_secs', 'sum')
+                    )
+                    for num, row in agg.iterrows():
+                        validation_stats[num]['total'] += row['count']
+                        validation_stats[num]['secs'] += row['secs']
+
                     # Find numbers that have at least one SIP 200
                     responded = matched_in_chunk[matched_in_chunk['sip_code'].astype(int) == 200]['e164'].unique()
                     for num in responded:
@@ -691,11 +704,27 @@ def analyze_no_response_validation(
         tp = 0 # True Positive: Predicted NO_RESPONSE, Reality NO_RESPONSE (no SIP 200)
         fp = 0 # False Positive: Predicted NO_RESPONSE, Reality RESPONDE (has SIP 200)
         
+        # LineState counts for TP matches
+        tp_line_state = {
+            'inactiva': 0,
+            'indeterminada': 0,
+            'activa': 0
+        }
+
         for num, has_200 in results.items():
             if has_200:
                 fp += 1
             else:
                 tp += 1
+                # Calculate LineState for TP
+                v_stats = validation_stats[num]
+                avg_duration = v_stats['secs'] / v_stats['total'] if v_stats['total'] > 0 else 0
+                if avg_duration < 5:
+                    tp_line_state['inactiva'] += 1
+                elif avg_duration < 10:
+                    tp_line_state['indeterminada'] += 1
+                else:
+                    tp_line_state['activa'] += 1
         
         total = tp + fp
         precision = (tp / total * 100) if total > 0 else 0
@@ -715,7 +744,8 @@ def analyze_no_response_validation(
             'cdr_stats': cdr_stats,
             'original_target_count': original_target_count,
             'filtered_target_count': filtered_target_count,
-            'reduction_pct': reduction_pct
+            'reduction_pct': reduction_pct,
+            'tp_line_state': tp_line_state
         }
 
         # Pass 3: Extract detailed CDR matches
