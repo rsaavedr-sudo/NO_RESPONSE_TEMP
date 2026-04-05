@@ -10,6 +10,14 @@ export interface AnalysisStats {
   numeros_con_no_response?: number;
   numeros_sin_no_response?: number;
   
+  // LineState fields
+  inactiva_count?: number;
+  indeterminada_count?: number;
+  activa_count?: number;
+  inactiva_pct?: number;
+  indeterminada_pct?: number;
+  activa_pct?: number;
+
   // ASR fields
   total_intentos?: number;
   intentos_atendidos?: number;
@@ -50,14 +58,6 @@ export interface AnalysisStats {
     Indeterminate: { count: number; percentage: number };
   };
 
-  // LineState fields
-  inactiva_count?: number;
-  indeterminada_count?: number;
-  activa_count?: number;
-  inactiva_pct?: number;
-  indeterminada_pct?: number;
-  activa_pct?: number;
-
   // Common fields
   filas_invalidas_descartadas: number;
   first_date?: string;
@@ -67,12 +67,13 @@ export interface AnalysisStats {
 
 export interface JobStatus {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned';
   analysis_type: string;
   progress_percent: number;
   stage: string;
   message: string;
   stats?: AnalysisStats;
   result_url?: string;
+  detailed_result_url?: string;
   error?: string;
 }

@@ -181,14 +181,14 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                 {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
                   <div className="mt-8 space-y-3">
                     <DownloadButton 
-                      url={getDownloadUrl(jobStatus.job_id)} 
+                      url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
                       filename={`resumen_validacion_${jobStatus.job_id}.csv`} 
                       label="Descargar Resumen (CSV)"
                     />
                     {jobStatus.detailed_result_url && (
                       <div className="pt-2">
                         <DownloadButton 
-                          url={getDetailedDownloadUrl(jobStatus.job_id)} 
+                          url={`${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.detailed_result_url}`} 
                           filename={`detalle_cdr_${jobStatus.job_id}.csv`}
                           variant="secondary"
                         />

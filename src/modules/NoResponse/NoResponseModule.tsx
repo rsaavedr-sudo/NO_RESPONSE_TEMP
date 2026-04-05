@@ -140,7 +140,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
                 {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
                   <div className="mt-8">
                     <DownloadButton 
-                      url={getDownloadUrl(jobStatus.job_id)} 
+                      url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
                       filename={`analisis_cdr_${jobStatus.job_id}.csv`} 
                     />
                   </div>

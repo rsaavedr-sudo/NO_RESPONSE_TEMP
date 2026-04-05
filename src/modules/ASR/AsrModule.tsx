@@ -141,7 +141,7 @@ export const ASRModule: React.FC<ASRModuleProps> = ({ log, setLastEndpoint }) =>
                 {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
                   <div className="mt-8">
                     <DownloadButton 
-                      url={getDownloadUrl(jobStatus.job_id)} 
+                      url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
                       filename={`analisis_asr_${jobStatus.job_id}.csv`} 
                     />
                   </div>
