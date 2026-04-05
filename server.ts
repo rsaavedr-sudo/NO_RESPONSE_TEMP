@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 async function startServer() {
   // Proxy API requests to FastAPI backend
