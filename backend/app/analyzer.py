@@ -624,6 +624,22 @@ def analyze_no_response_validation(
             logger.warning(f"No targets left after filtering. Original: {original_target_count}, Filtered: 0")
             # We'll continue but results will be empty
 
+        # Calculate LineState distribution for NO_RESPONSE_TEMP records if columns exist
+        linestate_distribution = None
+        if 'status' in filtered_df.columns and 'LineState' in filtered_df.columns:
+            no_response_temp_df = filtered_df[filtered_df['status'] == 'NO_RESPONSE_TEMP']
+            if not no_response_temp_df.empty:
+                counts = no_response_temp_df['LineState'].value_counts()
+                total_nr_temp = len(no_response_temp_df)
+                linestate_distribution = {}
+                for category in ['Active', 'Inactive', 'Indeterminate']:
+                    count = int(counts.get(category, 0))
+                    percentage = round((count / total_nr_temp * 100), 2) if total_nr_temp > 0 else 0
+                    linestate_distribution[category] = {
+                        "count": count,
+                        "percentage": percentage
+                    }
+
         # Track results: number -> has_sip_200 (bool)
         # We only care about numbers in target_numbers
         results = {num: False for num in target_numbers}
@@ -785,6 +801,7 @@ def analyze_no_response_validation(
             'reduction_pct': reduction_pct,
             'tp_line_state': tp_line_state,
             'total_line_state': total_line_state,
+            'linestate_distribution': linestate_distribution,
             'linestate_matches': linestate_matches,
             'has_target_linestate': has_target_linestate,
             'conversion_errors': conversion_errors[:10]

@@ -8,6 +8,7 @@ import { ErrorAlert } from '../../components/ErrorAlert';
 import { ValidationStatsPanel } from '../../components/ValidationStatsPanel';
 import { ValidationPieChart } from '../../components/ValidationPieChart';
 import { LineStatePieChart } from '../../components/LineStatePieChart';
+import { LineStateDistributionChart } from '../../components/LineStateDistributionChart';
 import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
 import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
@@ -261,6 +262,22 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                     indeterminada={jobStatus.stats.total_line_state.indeterminada}
                     activa={jobStatus.stats.total_line_state.activa}
                     title="Distribución de LineState (Total Analizado)"
+                  />
+                </div>
+              )}
+
+              {jobStatus.stats.linestate_distribution && (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
+                    <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider">
+                      Distribución LineState (NO_RESPONSE_TEMP)
+                    </h3>
+                    <p className="text-xs text-emerald-600 mt-1">
+                      Análisis detallado del estado de línea para los registros clasificados como NO_RESPONSE_TEMP.
+                    </p>
+                  </div>
+                  <LineStateDistributionChart 
+                    distribution={jobStatus.stats.linestate_distribution}
                   />
                 </div>
               )}

@@ -44,6 +44,11 @@ export interface AnalysisStats {
   };
   linestate_matches?: number;
   has_target_linestate?: boolean;
+  linestate_distribution?: {
+    Active: { count: number; percentage: number };
+    Inactive: { count: number; percentage: number };
+    Indeterminate: { count: number; percentage: number };
+  };
 
   // LineState fields
   inactiva_count?: number;
