@@ -26,7 +26,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   const handleAnalyze = async (files: File[], analysisDays: number, minFrequency: number) => {
     const totalSize = files.reduce((acc, f) => acc + f.size, 0);
     log('no_response', 'iniciado', { files: files.length, totalSize });
-    setLastEndpoint(`POST /analyze`);
+    setLastEndpoint(`POST /api/analyze`);
     
     setError(null);
     setActiveJobId(null);
@@ -70,7 +70,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   const startPolling = (jobId: string) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
-      setLastEndpoint(`GET /jobs/${jobId}`);
+      setLastEndpoint(`GET /api/jobs/${jobId}`);
       try {
         const data = await getJobStatus(jobId);
         setJobStatus(data);
