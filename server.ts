@@ -19,7 +19,6 @@ async function startServer() {
     createProxyMiddleware({
       target: BACKEND_URL,
       changeOrigin: true,
-      logLevel: "debug",
     })
   );
 

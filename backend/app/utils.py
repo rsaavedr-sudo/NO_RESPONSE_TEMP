@@ -30,9 +30,10 @@ def robust_numeric_normalize(val: Any) -> str:
     """
     Normalizes a numeric string handling thousands and decimal separators.
     Supports:
-    - "0,011" -> "0.011"
+    - "0,288" -> "0.288"
+    - "1.234,56" -> "1234.56"
     - "1.016.658" -> "1016658"
-    - "1.016.658,25" -> "1016658.25"
+    - "1,234.56" -> "1234.56"
     - "12.5" -> "12.5"
     """
     if val is None:
@@ -40,7 +41,7 @@ def robust_numeric_normalize(val: Any) -> str:
     if isinstance(val, (int, float)):
         return str(val)
     if not isinstance(val, str):
-        return str(val)
+        val = str(val)
     
     s = val.strip()
     if not s:
@@ -53,10 +54,10 @@ def robust_numeric_normalize(val: Any) -> str:
     if commas > 0 and dots > 0:
         # Both present. Determine which is which by the last one.
         if s.rfind(',') > s.rfind('.'):
-            # 1.234,56 -> 1234.56
+            # 1.234,56 -> 1234.56 (European/LatAm)
             return s.replace('.', '').replace(',', '.')
         else:
-            # 1,234.56 -> 1234.56
+            # 1,234.56 -> 1234.56 (US/UK)
             return s.replace(',', '')
     
     if commas > 0:
@@ -66,11 +67,8 @@ def robust_numeric_normalize(val: Any) -> str:
             return s.replace(',', '')
         else:
             # Single comma. 
-            # In European/LatAm context, it's a decimal separator.
-            # In US context, it could be thousands (1,234).
-            # But "0,011" was given as decimal.
-            # If it's followed by exactly 3 digits, it's ambiguous.
-            # However, we'll favor decimal for single comma.
+            # User says: "0,288" -> 0.288
+            # We treat single comma as decimal separator.
             return s.replace(',', '.')
             
     if dots > 0:

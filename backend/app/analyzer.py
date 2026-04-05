@@ -6,11 +6,11 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-def safe_to_float(series, col_name, file_path=None):
+def safe_to_float(series, col_name, file_path=None, error_list=None):
     """
     Safely converts a series to float, handling thousands/decimal separators and providing row-level context on error.
     """
-    if series.dtype == object:
+    if not pd.api.types.is_numeric_dtype(series):
         # Normalize: trim and handle separators
         from .utils import robust_numeric_normalize
         series = series.apply(lambda x: robust_numeric_normalize(x) if isinstance(x, str) else x)
@@ -26,7 +26,13 @@ def safe_to_float(series, col_name, file_path=None):
         file_info = f" en el archivo '{os.path.basename(file_path)}'" if file_path else ""
         # Index is 0-based, so add 2 (1 for header, 1 for 1-based index)
         row_info = f", fila {first_fail_idx + 2}"
-        raise ValueError(f"Error al convertir la columna '{col_name}'{file_info}{row_info}. Valor inválido: '{fail_val}'")
+        err_msg = f"Error al convertir la columna '{col_name}'{file_info}{row_info}. Valor inválido: '{fail_val}'"
+        
+        if error_list is not None:
+            if err_msg not in error_list: # Avoid duplicates if many rows fail similarly
+                error_list.append(err_msg)
+        else:
+            logger.warning(err_msg)
     
     return converted
 
@@ -139,6 +145,7 @@ def analyze_cdr_chunked(
         # e164 -> {total, sip_counts, first_date, last_date, days, total_secs}
         stats = {}
         all_sip_codes = set()
+        conversion_errors = []
         
         rows_processed_pass2 = 0
         
@@ -160,8 +167,8 @@ def analyze_cdr_chunked(
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 
                 # Robust numeric conversion
-                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path)
-                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', input_path)
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path, conversion_errors)
+                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', input_path, conversion_errors)
                 
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
                 
@@ -347,7 +354,8 @@ def analyze_cdr_chunked(
             'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
-            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None
+            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
+            'conversion_errors': conversion_errors[:10] # Show first 10 errors
         }
 
         if progress_callback:
@@ -426,6 +434,7 @@ def analyze_asr_chunked(
         rows_processed = 0
         global_first_date = None
         global_last_date = None
+        conversion_errors = []
 
         for input_path in input_paths:
             # Usecols for ASR
@@ -445,7 +454,7 @@ def analyze_asr_chunked(
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 
                 # Robust numeric conversion
-                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path)
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path, conversion_errors)
                 
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code'])
                 if chunk.empty: continue
@@ -536,7 +545,8 @@ def analyze_asr_chunked(
             'by_hour': format_dim('hour'),
             'by_client': format_dim('client'),
             'by_route': format_dim('route'),
-            'filas_invalidas_descartadas': invalid_rows
+            'filas_invalidas_descartadas': invalid_rows,
+            'conversion_errors': conversion_errors[:10]
         }
 
         # Save a simple CSV with the global dimensions for download.
@@ -595,12 +605,13 @@ def analyze_no_response_validation(
 
         # Apply filters if columns exist (they should if coming from NO_RESPONSE Analysis)
         filtered_df = target_df.copy()
+        conversion_errors = []
         if 'frequency' in filtered_df.columns:
-            filtered_df['frequency'] = safe_to_float(filtered_df['frequency'], 'frequency', target_path)
+            filtered_df['frequency'] = safe_to_float(filtered_df['frequency'], 'frequency', target_path, conversion_errors)
             filtered_df = filtered_df[filtered_df['frequency'] >= min_total_frequency]
         
         if 'avg_daily_frequency' in filtered_df.columns:
-            filtered_df['avg_daily_frequency'] = safe_to_float(filtered_df['avg_daily_frequency'], 'avg_daily_frequency', target_path)
+            filtered_df['avg_daily_frequency'] = safe_to_float(filtered_df['avg_daily_frequency'], 'avg_daily_frequency', target_path, conversion_errors)
             filtered_df = filtered_df[filtered_df['avg_daily_frequency'] >= min_avg_daily_frequency]
             
         target_numbers = set(filtered_df['e164'].dropna().unique())
@@ -665,8 +676,8 @@ def analyze_no_response_validation(
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 
                 # Robust numeric conversion
-                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', cdr_path)
-                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', cdr_path)
+                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', cdr_path, conversion_errors)
+                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', cdr_path, conversion_errors)
                 
                 chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
                 chunk = chunk[chunk['call_date'] >= start_date]
@@ -745,7 +756,8 @@ def analyze_no_response_validation(
             'original_target_count': original_target_count,
             'filtered_target_count': filtered_target_count,
             'reduction_pct': reduction_pct,
-            'tp_line_state': tp_line_state
+            'tp_line_state': tp_line_state,
+            'conversion_errors': conversion_errors[:10]
         }
 
         # Pass 3: Extract detailed CDR matches
