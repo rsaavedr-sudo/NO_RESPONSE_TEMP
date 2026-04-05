@@ -32,7 +32,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "2.1.1"}
 
 @api_router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
