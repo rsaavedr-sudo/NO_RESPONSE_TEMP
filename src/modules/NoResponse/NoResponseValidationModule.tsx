@@ -241,6 +241,26 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                     inactiva={jobStatus.stats.tp_line_state.inactiva}
                     indeterminada={jobStatus.stats.tp_line_state.indeterminada}
                     activa={jobStatus.stats.tp_line_state.activa}
+                    title="Distribución de LineState (Matches TP)"
+                  />
+                </div>
+              )}
+
+              {jobStatus.stats.total_line_state && (
+                <div className="space-y-4">
+                  <div className="bg-purple-50/50 p-4 rounded-2xl border border-purple-100">
+                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wider">
+                      Dimensión LineState (Universo Validado)
+                    </h3>
+                    <p className="text-xs text-purple-600 mt-1">
+                      Distribución de estado de línea para los {jobStatus.stats.total_analizados?.toLocaleString()} números analizados en total.
+                    </p>
+                  </div>
+                  <LineStatePieChart 
+                    inactiva={jobStatus.stats.total_line_state.inactiva}
+                    indeterminada={jobStatus.stats.total_line_state.indeterminada}
+                    activa={jobStatus.stats.total_line_state.activa}
+                    title="Distribución de LineState (Total Analizado)"
                   />
                 </div>
               )}

@@ -37,6 +37,13 @@ export interface AnalysisStats {
     indeterminada: number;
     activa: number;
   };
+  total_line_state?: {
+    inactiva: number;
+    indeterminada: number;
+    activa: number;
+  };
+  linestate_matches?: number;
+  has_target_linestate?: boolean;
 
   // LineState fields
   inactiva_count?: number;

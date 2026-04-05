@@ -43,6 +43,17 @@ export const ValidationStatsPanel: React.FC<ValidationStatsPanelProps> = ({ stat
     }
   ];
 
+  if (stats.linestate_matches !== undefined) {
+    cards.push({
+      title: 'Match LineState',
+      value: stats.linestate_matches.toLocaleString(),
+      icon: CheckCircle2,
+      color: 'text-purple-600',
+      bg: 'bg-purple-50',
+      description: 'Coincidencia en clasificación de estado de línea'
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">

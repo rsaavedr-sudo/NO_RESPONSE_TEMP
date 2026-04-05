@@ -6,9 +6,10 @@ interface LineStatePieChartProps {
   inactiva: number;
   indeterminada: number;
   activa: number;
+  title?: string;
 }
 
-export const LineStatePieChart: React.FC<LineStatePieChartProps> = ({ inactiva, indeterminada, activa }) => {
+export const LineStatePieChart: React.FC<LineStatePieChartProps> = ({ inactiva, indeterminada, activa, title }) => {
   const total = inactiva + indeterminada + activa;
   const data = total > 0 ? [
     { name: 'INACTIVA', value: inactiva, color: '#ef4444' },
@@ -29,7 +30,7 @@ export const LineStatePieChart: React.FC<LineStatePieChartProps> = ({ inactiva, 
       className="w-full h-[520px] bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden"
     >
       <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">
-        Distribución de LineState (Match)
+        {title || 'Distribución de LineState (Match)'}
       </h3>
       
       <div className="w-full h-[320px]">

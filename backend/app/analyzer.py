@@ -722,20 +722,47 @@ def analyze_no_response_validation(
             'activa': 0
         }
 
+        # New: Total LineState distribution for ALL target numbers (NO_RESPONSE_TEMP)
+        total_line_state = {
+            'inactiva': 0,
+            'indeterminada': 0,
+            'activa': 0
+        }
+
+        # New: Match by LineState
+        linestate_matches = 0
+        has_target_linestate = 'LineState' in target_df.columns
+        target_linestate_map = {}
+        if has_target_linestate:
+            target_linestate_map = target_df.set_index('e164')['LineState'].to_dict()
+
         for num, has_200 in results.items():
+            # Calculate LineState for this number
+            v_stats = validation_stats[num]
+            avg_duration = v_stats['secs'] / v_stats['total'] if v_stats['total'] > 0 else 0
+            
+            if avg_duration < 5:
+                current_ls = "Inactiva"
+            elif avg_duration < 10:
+                current_ls = "Indeterminada"
+            else:
+                current_ls = "Activa"
+            
+            # Update total distribution
+            total_line_state[current_ls.lower()] += 1
+
             if has_200:
                 fp += 1
             else:
                 tp += 1
-                # Calculate LineState for TP
-                v_stats = validation_stats[num]
-                avg_duration = v_stats['secs'] / v_stats['total'] if v_stats['total'] > 0 else 0
-                if avg_duration < 5:
-                    tp_line_state['inactiva'] += 1
-                elif avg_duration < 10:
-                    tp_line_state['indeterminada'] += 1
-                else:
-                    tp_line_state['activa'] += 1
+                # Update TP distribution
+                tp_line_state[current_ls.lower()] += 1
+                
+                # Check if LineState matches target file
+                if has_target_linestate:
+                    target_ls = target_linestate_map.get(num)
+                    if target_ls and str(target_ls).lower() == current_ls.lower():
+                        linestate_matches += 1
         
         total = tp + fp
         precision = (tp / total * 100) if total > 0 else 0
@@ -757,6 +784,9 @@ def analyze_no_response_validation(
             'filtered_target_count': filtered_target_count,
             'reduction_pct': reduction_pct,
             'tp_line_state': tp_line_state,
+            'total_line_state': total_line_state,
+            'linestate_matches': linestate_matches,
+            'has_target_linestate': has_target_linestate,
             'conversion_errors': conversion_errors[:10]
         }
 
