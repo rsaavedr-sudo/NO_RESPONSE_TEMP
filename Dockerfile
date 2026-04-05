@@ -3,7 +3,7 @@ FROM node:18
 WORKDIR /app
 
 # Instalar dependencias
-COPY package*.json ./
+COPY package.json package-lock.json ./
 RUN npm install
 
 # Copiar el código de la aplicación
