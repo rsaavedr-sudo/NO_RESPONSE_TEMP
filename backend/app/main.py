@@ -9,8 +9,8 @@ from sse_starlette.sse import EventSourceResponse
 from typing import List, Optional
 import json
 
-from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse
-from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, jobs, cancel_job, get_system_stats, cleanup_system
+from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse, StorageStats
+from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup
 from .utils import to_json_safe, parse_float
 
 # Configure logging
@@ -18,6 +18,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CDR Analyzer API")
+
+# Background task for periodic cleanup
+async def periodic_cleanup():
+    while True:
+        try:
+            auto_cleanup()
+            logger.info("Auto-cleanup completed")
+        except Exception as e:
+            logger.error(f"Error in auto-cleanup: {e}")
+        await asyncio.sleep(3600) # Every hour
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(periodic_cleanup())
 
 # Configure CORS
 app.add_middleware(
@@ -65,7 +79,7 @@ async def analyze(
     try:
         for i, file in enumerate(files):
             input_filename = f"input_{job_id}_{i}.csv"
-            input_path = os.path.join(TEMP_DIR, input_filename)
+            input_path = os.path.join(UPLOADS_DIR, input_filename)
             input_paths.append(input_path)
             
             with open(input_path, "wb") as buffer:
@@ -177,6 +191,59 @@ async def cancel_analysis(job_id: str):
     cancel_job(job_id)
     return {"status": "ok", "message": "Proceso detenido por el usuario"}
 
+@api_router.get("/maintenance/storage", response_model=SystemStats)
+async def get_storage_stats():
+    """Returns detailed storage information."""
+    return get_system_stats()
+
+@api_router.post("/maintenance/cleanup/temp", response_model=CleanupResponse)
+async def cleanup_temp():
+    """Cleans temporary files."""
+    result = cleanup_system(category="temp")
+    stats = get_system_stats()
+    return {
+        "files_deleted": result["files_deleted"],
+        "size_freed_bytes": result["size_freed_bytes"],
+        "remaining_size_bytes": {k: v["size_bytes"] for k, v in stats["storage"].items()},
+        "message": f"Temporales limpiados. Se liberaron {result['size_freed_bytes'] / 1024 / 1024:.2f} MB."
+    }
+
+@api_router.post("/maintenance/cleanup/uploads", response_model=CleanupResponse)
+async def cleanup_uploads():
+    """Cleans uploaded files."""
+    result = cleanup_system(category="uploads")
+    stats = get_system_stats()
+    return {
+        "files_deleted": result["files_deleted"],
+        "size_freed_bytes": result["size_freed_bytes"],
+        "remaining_size_bytes": {k: v["size_bytes"] for k, v in stats["storage"].items()},
+        "message": f"Uploads limpiados. Se liberaron {result['size_freed_bytes'] / 1024 / 1024:.2f} MB."
+    }
+
+@api_router.post("/maintenance/cleanup/results", response_model=CleanupResponse)
+async def cleanup_results():
+    """Cleans result files."""
+    result = cleanup_system(category="results")
+    stats = get_system_stats()
+    return {
+        "files_deleted": result["files_deleted"],
+        "size_freed_bytes": result["size_freed_bytes"],
+        "remaining_size_bytes": {k: v["size_bytes"] for k, v in stats["storage"].items()},
+        "message": f"Resultados limpiados. Se liberaron {result['size_freed_bytes'] / 1024 / 1024:.2f} MB."
+    }
+
+@api_router.post("/maintenance/cleanup/all", response_model=CleanupResponse)
+async def cleanup_all():
+    """Cleans all safe files."""
+    result = cleanup_system(category="all")
+    stats = get_system_stats()
+    return {
+        "files_deleted": result["files_deleted"],
+        "size_freed_bytes": result["size_freed_bytes"],
+        "remaining_size_bytes": {k: v["size_bytes"] for k, v in stats["storage"].items()},
+        "message": f"Limpieza total completada. Se liberaron {result['size_freed_bytes'] / 1024 / 1024:.2f} MB."
+    }
+
 @api_router.get("/maintenance/stats", response_model=SystemStats)
 async def get_stats():
     return get_system_stats()
@@ -184,9 +251,11 @@ async def get_stats():
 @api_router.post("/maintenance/cleanup", response_model=CleanupResponse)
 async def cleanup(request: CleanupRequest):
     result = cleanup_system(module=request.module, keep_latest=request.keep_latest)
+    stats = get_system_stats()
     return {
         "files_deleted": result["files_deleted"],
         "size_freed_bytes": result["size_freed_bytes"],
+        "remaining_size_bytes": {k: v["size_bytes"] for k, v in stats["storage"].items()},
         "message": f"Limpieza completada. Se eliminaron {result['files_deleted']} archivos."
     }
 

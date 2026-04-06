@@ -72,6 +72,18 @@ class AnalyzeResponse(BaseModel):
     status: str
     analysis_type: str
 
+class DirectoryStats(BaseModel):
+    files: int
+    size_bytes: int
+
+class StorageStats(BaseModel):
+    temp: DirectoryStats
+    uploads: DirectoryStats
+    backend_temp: DirectoryStats
+    backend_uploads: DirectoryStats
+    results: DirectoryStats
+    total: DirectoryStats
+
 class SystemStats(BaseModel):
     total_files: int
     total_size_bytes: int
@@ -81,6 +93,7 @@ class SystemStats(BaseModel):
     result_size_bytes: int
     last_analysis: Optional[datetime] = None
     by_module: Dict[str, Dict[str, Any]]
+    storage: Optional[StorageStats] = None
 
 class CleanupRequest(BaseModel):
     module: Optional[str] = None
@@ -89,4 +102,5 @@ class CleanupRequest(BaseModel):
 class CleanupResponse(BaseModel):
     files_deleted: int
     size_freed_bytes: int
+    remaining_size_bytes: Optional[Dict[str, int]] = None
     message: str

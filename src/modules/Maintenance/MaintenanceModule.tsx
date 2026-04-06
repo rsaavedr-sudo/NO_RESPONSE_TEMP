@@ -12,7 +12,15 @@ import {
   Layers,
   Zap
 } from 'lucide-react';
-import { getSystemStats, cleanupSystem, SystemStats } from '../../api/client';
+import { 
+  getSystemStats, 
+  cleanupSystem, 
+  cleanupTemp, 
+  cleanupUploads, 
+  cleanupResults, 
+  cleanupAll, 
+  SystemStats 
+} from '../../api/client';
 
 export const MaintenanceModule: React.FC = () => {
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -36,20 +44,45 @@ export const MaintenanceModule: React.FC = () => {
     fetchStats();
   }, []);
 
-  const handleCleanup = async (module?: string, keepLatest: boolean = false) => {
-    const confirmMsg = module 
-      ? `¿Estás seguro que deseas limpiar los archivos de ${module}?`
-      : '¿Estás seguro que deseas realizar una limpieza global del sistema?';
+  const handleCleanup = async (type: 'module' | 'temp' | 'uploads' | 'results' | 'all', module?: string, keepLatest: boolean = false) => {
+    let confirmMsg = '';
+    switch (type) {
+      case 'module':
+        confirmMsg = `¿Estás seguro que deseas limpiar los archivos de ${module}?`;
+        break;
+      case 'temp':
+        confirmMsg = '¿Estás seguro que deseas limpiar todos los archivos temporales (> 2h)?';
+        break;
+      case 'uploads':
+        confirmMsg = '¿Estás seguro que deseas limpiar todos los archivos subidos (> 24h)?';
+        break;
+      case 'results':
+        confirmMsg = '¿Estás seguro que deseas limpiar todos los resultados (> 24h)?';
+        break;
+      case 'all':
+        confirmMsg = '¿Estás seguro que deseas realizar una limpieza total segura del sistema?';
+        break;
+    }
     
     if (!window.confirm(confirmMsg)) return;
 
     try {
       setCleaning(true);
-      const result = await cleanupSystem(module, keepLatest);
-      setMessage({ 
-        text: `${result.message} Se liberaron ${(result.size_freed_bytes / (1024 * 1024)).toFixed(2)} MB.`, 
-        type: 'success' 
-      });
+      let result;
+      switch (type) {
+        case 'module': result = await cleanupSystem(module, keepLatest); break;
+        case 'temp': result = await cleanupTemp(); break;
+        case 'uploads': result = await cleanupUploads(); break;
+        case 'results': result = await cleanupResults(); break;
+        case 'all': result = await cleanupAll(); break;
+      }
+      
+      if (result) {
+        setMessage({ 
+          text: `${result.message} Se liberaron ${(result.size_freed_bytes / (1024 * 1024)).toFixed(2)} MB.`, 
+          type: 'success' 
+        });
+      }
       await fetchStats();
     } catch (error) {
       setMessage({ text: 'Error al realizar la limpieza.', type: 'error' });
@@ -116,8 +149,8 @@ export const MaintenanceModule: React.FC = () => {
             <h3 className="font-bold uppercase tracking-wider text-xs">Almacenamiento Total</h3>
           </div>
           <div className="space-y-1">
-            <p className="text-4xl font-black text-gray-900">{formatSize(stats?.total_size_bytes || 0)}</p>
-            <p className="text-sm text-gray-400 font-medium">{stats?.total_files} archivos detectados</p>
+            <p className="text-4xl font-black text-gray-900">{formatSize(stats?.storage?.total.size_bytes || stats?.total_size_bytes || 0)}</p>
+            <p className="text-sm text-gray-400 font-medium">{stats?.storage?.total.files || stats?.total_files} archivos detectados</p>
           </div>
         </div>
 
@@ -140,9 +173,31 @@ export const MaintenanceModule: React.FC = () => {
             <h3 className="font-bold uppercase tracking-wider text-xs">Espacio Potencial</h3>
           </div>
           <div className="space-y-1">
-            <p className="text-4xl font-black text-gray-900">{formatSize(stats?.temp_size_bytes || 0)}</p>
+            <p className="text-4xl font-black text-gray-900">{formatSize((stats?.storage?.temp.size_bytes || 0) + (stats?.storage?.backend_temp.size_bytes || 0))}</p>
             <p className="text-sm text-gray-400 font-medium">Liberable eliminando temporales</p>
           </div>
+        </div>
+      </div>
+
+      {/* Storage Panel */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-50 flex items-center gap-3">
+          <Database className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-xl font-bold text-gray-900">Panel de Almacenamiento</h2>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { id: 'temp', label: 'temp/', stats: stats?.storage?.temp },
+            { id: 'uploads', label: 'uploads/', stats: stats?.storage?.uploads },
+            { id: 'backend_temp', label: 'backend/temp/', stats: stats?.storage?.backend_temp },
+            { id: 'backend_uploads', label: 'backend/uploads/', stats: stats?.storage?.backend_uploads },
+          ].map((dir) => (
+            <div key={dir.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{dir.label}</p>
+              <p className="text-xl font-black text-gray-900">{formatSize(dir.stats?.size_bytes || 0)}</p>
+              <p className="text-xs text-gray-500 font-medium">{dir.stats?.files || 0} archivos</p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -150,34 +205,31 @@ export const MaintenanceModule: React.FC = () => {
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <Layers className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-xl font-bold text-gray-900">Limpieza por Módulo</h2>
+            <h2 className="text-xl font-bold text-gray-900">Limpieza por Categoría</h2>
           </div>
           
           <div className="grid grid-cols-1 gap-4">
             {[
-              { id: 'no_response', name: 'Análisis NO_RESPONSE', bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
-              { id: 'asr', name: 'Análisis ASR', bgColor: 'bg-purple-50', textColor: 'text-purple-600' },
-              { id: 'no_response_validation', name: 'Validación NO_RESPONSE', bgColor: 'bg-indigo-50', textColor: 'text-indigo-600' }
-            ].map(module => (
-              <div key={module.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-indigo-200 transition-all">
+              { id: 'temp', name: 'Limpiar Temporales', description: 'Borra archivos en temp/ (> 2h)', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+              { id: 'uploads', name: 'Limpiar Uploads', description: 'Borra archivos en uploads/ (> 24h)', icon: RefreshCw, color: 'text-blue-600', bg: 'bg-blue-50' },
+              { id: 'results', name: 'Limpiar Resultados', description: 'Borra archivos en results/ (> 24h)', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            ].map(cat => (
+              <div key={cat.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-indigo-200 transition-all">
                 <div className="flex items-center gap-4">
-                  <div className={`p-3 ${module.bgColor} ${module.textColor} rounded-xl`}>
-                    <Database className="w-5 h-5" />
+                  <div className={`p-3 ${cat.bg} ${cat.color} rounded-xl`}>
+                    <cat.icon className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-gray-900">{module.name}</h4>
-                    <p className="text-xs text-gray-400 font-medium">
-                      {stats?.by_module[module.id]?.files || 0} archivos • {formatSize(stats?.by_module[module.id]?.size || 0)}
-                    </p>
+                    <h4 className="font-bold text-gray-900">{cat.name}</h4>
+                    <p className="text-xs text-gray-400 font-medium">{cat.description}</p>
                   </div>
                 </div>
                 <button 
-                  onClick={() => handleCleanup(module.id)}
+                  onClick={() => handleCleanup(cat.id as any)}
                   disabled={cleaning}
-                  className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                  title="Limpiar módulo"
+                  className="px-4 py-2 bg-gray-50 text-gray-600 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-600 transition-all"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  Ejecutar
                 </button>
               </div>
             ))}
@@ -192,30 +244,21 @@ export const MaintenanceModule: React.FC = () => {
 
           <div className="bg-red-50/50 border border-red-100 rounded-3xl p-8 space-y-6">
             <div className="space-y-2">
-              <h3 className="text-lg font-bold text-red-900">Limpieza Profunda</h3>
+              <h3 className="text-lg font-bold text-red-900">Limpieza Total Segura</h3>
               <p className="text-sm text-red-700 font-medium">
-                Esta acción eliminará todos los archivos temporales, cache y resultados antiguos. 
+                Esta acción eliminará todos los archivos temporales, cache y resultados antiguos de todas las carpetas. 
                 Solo se conservarán los procesos que estén actualmente en ejecución.
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
               <button
-                onClick={() => handleCleanup(undefined, true)}
-                disabled={cleaning}
-                className="flex items-center justify-center gap-3 w-full py-4 bg-white border-2 border-red-200 text-red-600 rounded-2xl font-black hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <Clock className="w-5 h-5" />
-                Limpiar todo excepto lo último
-              </button>
-
-              <button
-                onClick={() => handleCleanup()}
+                onClick={() => handleCleanup('all')}
                 disabled={cleaning}
                 className="flex items-center justify-center gap-3 w-full py-4 bg-red-600 text-white rounded-2xl font-black hover:bg-red-700 transition-all shadow-lg shadow-red-200 active:scale-95 disabled:opacity-50"
               >
                 <Trash2 className="w-5 h-5" />
-                Limpiar TODO el sistema
+                Limpieza TOTAL Segura
               </button>
             </div>
 

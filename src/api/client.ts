@@ -33,6 +33,20 @@ export interface JobStatus {
   error?: string;
 }
 
+export interface DirectoryStats {
+  files: number;
+  size_bytes: number;
+}
+
+export interface StorageStats {
+  temp: DirectoryStats;
+  uploads: DirectoryStats;
+  backend_temp: DirectoryStats;
+  backend_uploads: DirectoryStats;
+  results: DirectoryStats;
+  total: DirectoryStats;
+}
+
 export interface SystemStats {
   total_files: number;
   total_size_bytes: number;
@@ -42,11 +56,13 @@ export interface SystemStats {
   result_size_bytes: number;
   last_analysis?: string;
   by_module: Record<string, { files: number; size: number }>;
+  storage?: StorageStats;
 }
 
 export interface CleanupResponse {
   files_deleted: number;
   size_freed_bytes: number;
+  remaining_size_bytes?: Record<string, number>;
   message: string;
 }
 
@@ -117,5 +133,25 @@ export const cleanupSystem = async (module?: string, keepLatest: boolean = false
     module,
     keep_latest: keepLatest
   });
+  return response.data;
+};
+
+export const cleanupTemp = async () => {
+  const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup/temp`);
+  return response.data;
+};
+
+export const cleanupUploads = async () => {
+  const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup/uploads`);
+  return response.data;
+};
+
+export const cleanupResults = async () => {
+  const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup/results`);
+  return response.data;
+};
+
+export const cleanupAll = async () => {
+  const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup/all`);
   return response.data;
 };
