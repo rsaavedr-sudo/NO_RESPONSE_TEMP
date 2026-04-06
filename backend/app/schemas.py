@@ -25,6 +25,8 @@ class AnalysisStats(BaseModel):
     by_hour: Optional[List[Dict[str, Any]]] = None
     by_client: Optional[List[Dict[str, Any]]] = None
     by_route: Optional[List[Dict[str, Any]]] = None
+    by_operator: Optional[List[Dict[str, Any]]] = None
+    by_ddd_operator: Optional[List[Dict[str, Any]]] = None
 
     # Validation fields
     tp_count: Optional[int] = None

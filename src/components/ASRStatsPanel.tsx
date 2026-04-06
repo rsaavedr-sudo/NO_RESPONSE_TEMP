@@ -8,7 +8,7 @@ interface ASRStatsPanelProps {
 }
 
 export const ASRStatsPanel: React.FC<ASRStatsPanelProps> = ({ stats }) => {
-  const [selectedDim, setSelectedDim] = useState<'by_ddd' | 'by_region' | 'by_date' | 'by_hour' | 'by_client' | 'by_route'>('by_region');
+  const [selectedDim, setSelectedDim] = useState<'by_ddd' | 'by_region' | 'by_date' | 'by_hour' | 'by_client' | 'by_route' | 'by_operator' | 'by_ddd_operator'>('by_region');
 
   const summaryCards = [
     {
@@ -44,6 +44,8 @@ export const ASRStatsPanel: React.FC<ASRStatsPanelProps> = ({ stats }) => {
   const dimensions = [
     { id: 'by_ddd', label: 'DDD' },
     { id: 'by_region', label: 'Región' },
+    { id: 'by_operator', label: 'Operadora' },
+    { id: 'by_ddd_operator', label: 'DDD + Op' },
     { id: 'by_date', label: 'Fecha' },
     { id: 'by_hour', label: 'Rango Horario' },
     { id: 'by_client', label: 'Cliente' },

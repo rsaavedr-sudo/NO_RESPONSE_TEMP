@@ -66,6 +66,69 @@ DDD_REGION_MAP = {
     '98': 'Maranhão', '99': 'Maranhão'
 }
 
+# Base de numeración nacional Brasil v3 (Simulada/In-memory)
+# En un entorno real, esto se cargaría desde un archivo o base de datos.
+# Formato: (DDD, Prefijo) -> Operadora
+BRAZIL_OPERATORS_BASE = {
+    # São Paulo (11)
+    ('11', '991'): 'VIVO', ('11', '992'): 'VIVO', ('11', '993'): 'VIVO', ('11', '994'): 'VIVO',
+    ('11', '981'): 'TIM', ('11', '982'): 'TIM', ('11', '983'): 'TIM',
+    ('11', '971'): 'CLARO', ('11', '972'): 'CLARO', ('11', '973'): 'CLARO',
+    ('11', '995'): 'ALGAR',
+    # Rio de Janeiro (21)
+    ('21', '991'): 'VIVO', ('21', '981'): 'TIM', ('21', '971'): 'CLARO',
+    # Minas Gerais (31)
+    ('31', '991'): 'VIVO', ('31', '981'): 'TIM', ('31', '971'): 'CLARO', ('31', '951'): 'ALGAR',
+}
+
+# Expandir la base para cubrir más DDDs de forma genérica para la simulación
+for ddd in DDD_REGION_MAP.keys():
+    if (ddd, '991') not in BRAZIL_OPERATORS_BASE:
+        BRAZIL_OPERATORS_BASE[(ddd, '991')] = 'VIVO'
+        BRAZIL_OPERATORS_BASE[(ddd, '981')] = 'TIM'
+        BRAZIL_OPERATORS_BASE[(ddd, '971')] = 'CLARO'
+        if ddd in ['34', '35', '37', '38']: # Áreas comunes de Algar
+            BRAZIL_OPERATORS_BASE[(ddd, '951')] = 'ALGAR'
+
+def get_operator_from_base(e164: str) -> str:
+    """
+    Determina la operadora basada en el DDD y el prefijo del número.
+    Lógica:
+    - Extraer DDD (posiciones 2-4 si empieza con 55)
+    - Remover el primer '9' del número local si existe
+    - Consultar prefijo de 2 a 4 dígitos
+    """
+    if not isinstance(e164, str) or len(e164) < 4:
+        return "UNKNOWN"
+    
+    # Extraer DDD
+    if e164.startswith('55'):
+        ddd = e164[2:4]
+        local_num = e164[4:]
+    else:
+        # Asumir que el número empieza con DDD si no tiene 55
+        ddd = e164[:2]
+        local_num = e164[2:]
+    
+    if ddd not in DDD_REGION_MAP:
+        return "UNKNOWN"
+    
+    # Remover el primer '9' si es móvil (Brasil tiene 9 dígitos para móviles)
+    if len(local_num) >= 9 and local_num.startswith('9'):
+        prefix_source = local_num[1:]
+    else:
+        prefix_source = local_num
+    
+    # Probar prefijos de 4, 3 y 2 dígitos
+    for length in [4, 3, 2]:
+        if len(prefix_source) >= length:
+            prefix = prefix_source[:length]
+            op = BRAZIL_OPERATORS_BASE.get((ddd, prefix))
+            if op:
+                return op
+                
+    return "UNKNOWN"
+
 def get_region(e164):
     if not isinstance(e164, str) or len(e164) < 4:
         return 'Desconocido', '??'
@@ -426,7 +489,9 @@ def analyze_asr_chunked(
             'date': {},
             'hour': {},
             'client': {},
-            'route': {}
+            'route': {},
+            'operator': {},
+            'ddd_operator': {}
         }
         
         total_intentos = 0
@@ -476,6 +541,10 @@ def analyze_asr_chunked(
                 chunk['region'] = chunk['region_info'].apply(lambda x: x[0])
                 chunk['ddd'] = chunk['region_info'].apply(lambda x: x[1])
                 
+                # Operator
+                chunk['operator'] = chunk['e164'].apply(get_operator_from_base)
+                chunk['ddd_operator'] = chunk['ddd'] + " | " + chunk['operator']
+                
                 # Date and Hour
                 chunk['date'] = chunk['call_date'].dt.strftime('%Y-%m-%d')
                 chunk['hour'] = chunk['call_date'].dt.hour.astype(str).str.zfill(2) + ":00"
@@ -502,6 +571,8 @@ def analyze_asr_chunked(
                 agg_dim('hour', 'hour')
                 agg_dim('client', 'client_code')
                 agg_dim('route', 'route_code')
+                agg_dim('operator', 'operator')
+                agg_dim('ddd_operator', 'ddd_operator')
 
                 if progress_callback:
                     p = 20 + int((rows_processed / total_rows) * 70)
@@ -545,6 +616,8 @@ def analyze_asr_chunked(
             'by_hour': format_dim('hour'),
             'by_client': format_dim('client'),
             'by_route': format_dim('route'),
+            'by_operator': format_dim('operator'),
+            'by_ddd_operator': format_dim('ddd_operator'),
             'filas_invalidas_descartadas': invalid_rows,
             'conversion_errors': conversion_errors[:10]
         }

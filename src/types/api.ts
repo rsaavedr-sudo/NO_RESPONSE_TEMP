@@ -29,6 +29,8 @@ export interface AnalysisStats {
   by_hour?: any[];
   by_client?: any[];
   by_route?: any[];
+  by_operator?: any[];
+  by_ddd_operator?: any[];
 
   // Validation fields
   tp_count?: number;
