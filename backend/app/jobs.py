@@ -100,7 +100,7 @@ class CancellationException(Exception):
 
 def create_job(analysis_type: str = "no_response") -> str:
     job_id = str(uuid.uuid4())
-    now = datetime.now()
+    now = datetime.utcnow()
     jobs[job_id] = {
         "job_id": job_id,
         "analysis_type": analysis_type,
@@ -128,7 +128,7 @@ def create_job(analysis_type: str = "no_response") -> str:
 
 def add_job_log(job_id: str, level: str, stage: str, message: str, details: Optional[str] = None):
     if job_id in jobs:
-        now = datetime.now()
+        now = datetime.utcnow()
         log_entry = {
             "timestamp": now,
             "level": level,
@@ -156,11 +156,13 @@ def add_job_log(job_id: str, level: str, stage: str, message: str, details: Opti
 
 def cancel_job(job_id: str):
     if job_id in jobs:
+        now = datetime.utcnow()
         jobs[job_id]["is_cancelled"] = True
         jobs[job_id]["status"] = "stopped"
         jobs[job_id]["stage"] = "stopped"
         jobs[job_id]["message"] = "Proceso detenido por el usuario"
         add_job_log(job_id, "WARNING", "stopped", "Proceso detenido por el usuario")
+        jobs[job_id]["last_update"] = now
         logger.info(f"Job {job_id} marked as cancelled")
         save_job_metadata(job_id)
 
@@ -351,7 +353,7 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
         if jobs[job_id].get("is_cancelled"):
             raise CancellationException("Proceso detenido por el usuario")
             
-        now = datetime.now()
+        now = datetime.utcnow()
         jobs[job_id]["progress_percent"] = to_json_safe(percent)
         
         # Only add log if stage or message changed significantly, or every 10%
@@ -378,7 +380,7 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
 
 def set_job_error(job_id: str, error: str):
     if job_id in jobs:
-        now = datetime.now()
+        now = datetime.utcnow()
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = error
         jobs[job_id]["message"] = f"Error: {error}"
@@ -388,7 +390,7 @@ def set_job_error(job_id: str, error: str):
 
 def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
     if job_id in jobs:
-        now = datetime.now()
+        now = datetime.utcnow()
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["stats"] = to_json_safe(stats)
         jobs[job_id]["result_path"] = result_path
@@ -534,7 +536,7 @@ def cleanup_old_jobs(hours: int = 24):
     """
     Removes old jobs and their files.
     """
-    now = datetime.now()
+    now = datetime.utcnow()
     to_delete = []
     for job_id, job in jobs.items():
         if now - job["created_at"] > timedelta(hours=hours):

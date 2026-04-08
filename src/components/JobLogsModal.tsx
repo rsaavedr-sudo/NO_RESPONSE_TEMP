@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getLogsDownloadUrl } from '../api/client';
 import { JobStatus } from '../types/api';
+import { formatTimeOnly } from '../lib/dateUtils';
 
 interface JobLogsModalProps {
   job: JobStatus;
@@ -157,7 +158,7 @@ export const JobLogsModal: React.FC<JobLogsModalProps> = ({ job, onClose }) => {
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span className="text-gray-400 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {new Date(log.timestamp).toLocaleTimeString()}
+                          {formatTimeOnly(log.timestamp)}
                         </span>
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${getLevelClass(log.level)}`}>
                           {log.level}
@@ -204,7 +205,7 @@ export const JobLogsModal: React.FC<JobLogsModalProps> = ({ job, onClose }) => {
         {/* Footer */}
         <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest px-8">
           <span>Total Logs: {filteredLogs.length}</span>
-          <span>Última actualización: {job.last_update ? new Date(job.last_update).toLocaleTimeString() : 'N/A'}</span>
+          <span>Última actualización: {formatTimeOnly(job.last_update)}</span>
         </div>
       </motion.div>
     </div>

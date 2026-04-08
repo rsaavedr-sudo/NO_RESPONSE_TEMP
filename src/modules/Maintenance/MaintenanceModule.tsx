@@ -21,6 +21,7 @@ import {
   cleanupAll, 
   SystemStats 
 } from '../../api/client';
+import { formatDateTime } from '../../lib/dateUtils';
 
 export const MaintenanceModule: React.FC = () => {
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -161,7 +162,7 @@ export const MaintenanceModule: React.FC = () => {
           </div>
           <div className="space-y-1">
             <p className="text-xl font-black text-gray-900">
-              {stats?.last_analysis ? new Date(stats.last_analysis).toLocaleString() : 'No hay registros'}
+              {stats?.last_analysis ? formatDateTime(stats.last_analysis) : 'No hay registros'}
             </p>
             <p className="text-sm text-gray-400 font-medium">Fecha de creación más reciente</p>
           </div>
