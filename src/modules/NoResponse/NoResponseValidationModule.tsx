@@ -38,7 +38,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
     analysisDays: number, 
     minFrequency: number,
     minTotalFrequency?: number,
-    minAvgDailyFrequency?: number
+    minAvgDailyFrequency?: number,
+    useHistory: boolean = false,
+    historyDays: number = 30
   ) => {
     setLastFiles(files);
     setLastAnalysisDays(analysisDays);
@@ -58,7 +60,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
       analysis_type: 'no_response_validation',
       progress_percent: 0,
       stage: 'uploading',
-      message: 'Subiendo archivos al servidor...'
+      message: 'Subiendo archivos al servidor...',
+      use_history: useHistory,
+      history_days: historyDays
     });
 
     try {
@@ -69,7 +73,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
         minFrequency, 
         'no_response_validation',
         minTotalFrequency,
-        minAvgDailyFrequency
+        minAvgDailyFrequency,
+        useHistory,
+        historyDays
       );
       log('validation', 'job_id recibido', job_id);
       setActiveJobId(job_id);

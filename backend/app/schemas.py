@@ -77,6 +77,10 @@ class JobStatus(BaseModel):
     detailed_result_url: Optional[str] = None
     error: Optional[str] = None
     processed_records: Optional[int] = None
+    use_history: bool = True
+    history_days: int = 30
+    files_skipped: List[str] = []
+    days_considered: List[str] = []
     logs: List[JobLog] = []
     last_update: datetime
     created_at: datetime

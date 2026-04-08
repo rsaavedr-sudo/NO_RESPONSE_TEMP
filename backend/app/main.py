@@ -57,7 +57,9 @@ async def analyze(
     min_frequency: str = Form("5"),
     analysis_type: str = Form("no_response"),
     min_total_frequency: Optional[str] = Form(None),
-    min_avg_daily_frequency: Optional[str] = Form(None)
+    min_avg_daily_frequency: Optional[str] = Form(None),
+    use_history: bool = Form(True),
+    history_days: str = Form("30")
 ):
     """
     Starts an asynchronous CDR analysis job with multiple files.
@@ -71,16 +73,31 @@ async def analyze(
         min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
         min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
         min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
+        h_days = int(parse_float(history_days, "Días de Histórico"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
         
     job_id = create_job(analysis_type=analysis_type)
+    
+    # Update job with new parameters
+    if job_id in jobs:
+        jobs[job_id]["use_history"] = use_history
+        jobs[job_id]["history_days"] = h_days
+
     input_paths = []
     
     try:
         for i, file in enumerate(files):
+            # Keep original filename for deduplication metadata
+            original_filename = file.filename
             input_filename = f"input_{job_id}_{i}.csv"
             input_path = os.path.join(UPLOADS_DIR, input_filename)
+            
+            # Store original filename in job metadata for later use in analyzer
+            if "input_filenames" not in jobs[job_id]:
+                jobs[job_id]["input_filenames"] = []
+            jobs[job_id]["input_filenames"].append(original_filename)
+
             input_paths.append(input_path)
             
             with open(input_path, "wb") as buffer:
@@ -102,7 +119,9 @@ async def analyze(
         analysis_days=days, 
         min_frequency=min_freq,
         min_total_frequency=min_total,
-        min_avg_daily_frequency=min_avg
+        min_avg_daily_frequency=min_avg,
+        use_history=use_history,
+        history_days=h_days
     )
     
     return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}
@@ -153,6 +172,10 @@ def format_job_status(job: dict):
             detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             processed_records=safe_job.get("processed_records"),
+            use_history=safe_job.get("use_history", True),
+            history_days=safe_job.get("history_days", 30),
+            files_skipped=safe_job.get("files_skipped", []),
+            days_considered=safe_job.get("days_considered", []),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
             created_at=safe_job.get("created_at"),

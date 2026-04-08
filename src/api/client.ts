@@ -51,7 +51,9 @@ export const startAnalysis = async (
   minFrequency: number, 
   analysisType: string = 'no_response',
   minTotalFrequency?: number,
-  minAvgDailyFrequency?: number
+  minAvgDailyFrequency?: number,
+  useHistory: boolean = true,
+  historyDays: number = 30
 ) => {
   const formData = new FormData();
   files.forEach(file => {
@@ -60,6 +62,8 @@ export const startAnalysis = async (
   formData.append('analysis_days', analysisDays.toString());
   formData.append('min_frequency', minFrequency.toString());
   formData.append('analysis_type', analysisType);
+  formData.append('use_history', useHistory.toString());
+  formData.append('history_days', historyDays.toString());
   
   if (minTotalFrequency !== undefined) {
     formData.append('min_total_frequency', minTotalFrequency.toString());

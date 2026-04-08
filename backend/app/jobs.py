@@ -389,6 +389,12 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
         jobs[job_id]["stats"] = to_json_safe(stats)
         jobs[job_id]["result_path"] = result_path
         
+        # Incremental analysis fields
+        if "files_skipped" in stats:
+            jobs[job_id]["files_skipped"] = stats["files_skipped"]
+        if "days_considered" in stats:
+            jobs[job_id]["days_considered"] = stats["days_considered"]
+
         # Check if detailed result exists
         detailed_path = result_path.replace(".csv", "_detailed.csv")
         if os.path.exists(detailed_path):
@@ -464,7 +470,9 @@ def run_analysis_task(
     analysis_days: int, 
     min_frequency: int,
     min_total_frequency: Optional[int] = None,
-    min_avg_daily_frequency: Optional[float] = None
+    min_avg_daily_frequency: Optional[float] = None,
+    use_history: bool = True,
+    history_days: int = 30
 ):
     try:
         job = jobs.get(job_id)
@@ -484,13 +492,17 @@ def run_analysis_task(
             check_cancellation(job_id)
             
         if analysis_type == "no_response":
+            input_filenames = job.get("input_filenames", [os.path.basename(p) for p in input_paths])
             stats = analyze_cdr_chunked(
                 input_paths=input_paths,
                 output_path=output_path,
                 analysis_days=analysis_days,
                 min_frequency=min_frequency,
                 progress_callback=progress_callback,
-                check_cancellation=check_cancel
+                check_cancellation=check_cancel,
+                use_history=use_history,
+                history_days=history_days,
+                input_filenames=input_filenames
             )
         elif analysis_type == "asr":
             stats = analyze_asr_chunked(
