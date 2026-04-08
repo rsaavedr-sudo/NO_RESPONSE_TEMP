@@ -4,28 +4,32 @@ from typing import Any
 
 def to_json_safe(obj: Any) -> Any:
     """
-    Recursively converts non-serializable types (like numpy.int64, numpy.float64, etc.) 
-    to native Python types for JSON serialization.
+    Recursively converts non-serializable types to native Python types for JSON serialization.
+    Optimized to avoid heavy checks when possible.
     """
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
     if isinstance(obj, dict):
         return {str(k): to_json_safe(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple, set)):
+    if isinstance(obj, (list, tuple, set)):
         return [to_json_safe(i) for i in obj]
-    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8, np.integer)):
+    if isinstance(obj, (np.int64, np.int32, np.int16, np.int8, np.integer)):
         return int(obj)
-    elif isinstance(obj, (np.float64, np.float32, np.float16, np.floating)):
-        return float(obj)
-    elif isinstance(obj, (np.bool_)):
+    if isinstance(obj, (np.float64, np.float32, np.float16, np.floating)):
+        val = float(obj)
+        return None if np.isnan(val) else val
+    if isinstance(obj, (np.bool_)):
         return bool(obj)
-    elif isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         return to_json_safe(obj.tolist())
-    elif hasattr(obj, "isoformat") and callable(getattr(obj, "isoformat")):
+    if hasattr(obj, "isoformat") and callable(getattr(obj, "isoformat")):
         return obj.isoformat()
-    elif pd.isna(obj) if not isinstance(obj, (dict, list, tuple, set, np.ndarray)) else False:
-        return None
-    elif hasattr(obj, "item") and callable(getattr(obj, "item")):
-        # Handle other numpy scalars
-        return obj.item()
+    # Fallback for other types
+    try:
+        if pd.isna(obj):
+            return None
+    except:
+        pass
     return obj
 
 def robust_numeric_normalize(val: Any) -> str:

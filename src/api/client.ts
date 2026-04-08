@@ -68,11 +68,7 @@ export const startAnalysis = async (
     formData.append('min_avg_daily_frequency', minAvgDailyFrequency.toString());
   }
 
-  const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  const response = await axios.post(`${API_BASE_URL}/analyze`, formData);
 
   return response.data as { job_id: string; status: string; analysis_type: string };
 };
