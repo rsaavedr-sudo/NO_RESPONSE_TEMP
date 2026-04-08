@@ -80,6 +80,7 @@ class JobStatus(BaseModel):
     logs: List[JobLog] = []
     last_update: datetime
     created_at: datetime
+    completed_at: Optional[datetime] = None
 
 class AnalyzeResponse(BaseModel):
     job_id: str

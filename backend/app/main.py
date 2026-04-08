@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse, StorageStats
-from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
+from .jobs import create_job, run_analysis_task, get_job, get_last_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
 from .utils import to_json_safe, parse_float
 
 # Configure logging
@@ -118,6 +118,20 @@ async def get_job_status(job_id: str):
         logger.warning(f"Job não encontrado: {job_id}")
         raise HTTPException(status_code=404, detail="Job not found")
     
+    return format_job_status(job)
+
+@api_router.get("/jobs/last/{analysis_type}", response_model=JobStatus)
+async def get_last_job_status(analysis_type: str):
+    """
+    Returns the most recent completed job for a given analysis type.
+    """
+    job = get_last_job(analysis_type)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"No completed job found for type {analysis_type}")
+    
+    return format_job_status(job)
+
+def format_job_status(job: dict):
     try:
         # Sanitize job data for JSON serialization
         safe_job = to_json_safe(job)
@@ -135,16 +149,17 @@ async def get_job_status(job_id: str):
             stage=safe_job["stage"],
             message=safe_job["message"],
             stats=stats,
-            result_url=f"/api/download/{job_id}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/api/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
+            result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             processed_records=safe_job.get("processed_records"),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
-            created_at=safe_job.get("created_at")
+            created_at=safe_job.get("created_at"),
+            completed_at=safe_job.get("completed_at")
         )
     except Exception as e:
-        logger.exception(f"Erro ao processar status do job {job_id}: {str(e)}")
+        logger.exception(f"Erro ao formatar status do job: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error processing job status: {str(e)}")
 
 @api_router.get("/download_detailed/{job_id}")

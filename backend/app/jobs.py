@@ -3,6 +3,7 @@ import threading
 import os
 import logging
 import json
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, timezone
 from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
@@ -15,26 +16,26 @@ logger = logging.getLogger(__name__)
 jobs: Dict[str, Any] = {}
 
 # Storage directories
-APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # backend/
-ROOT_DIR = os.path.dirname(APP_DIR) # project root
+# __file__ is /backend/app/jobs.py
+BASE_DIR = Path(__file__).resolve().parent.parent # /backend
+ROOT_DIR = BASE_DIR.parent # /
 
 STORAGE_DIRS = {
-    "temp": os.path.join(ROOT_DIR, "temp"),
-    "uploads": os.path.join(ROOT_DIR, "uploads"),
-    "backend_temp": os.path.join(APP_DIR, "temp"),
-    "backend_uploads": os.path.join(APP_DIR, "uploads"),
-    "results": os.path.join(APP_DIR, "results")
+    "temp": ROOT_DIR / "temp",
+    "uploads": ROOT_DIR / "uploads",
+    "backend_temp": BASE_DIR / "temp",
+    "backend_uploads": BASE_DIR / "uploads",
+    "results": BASE_DIR / "results"
 }
 
 # Ensure directories exist
 for d in STORAGE_DIRS.values():
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True)
 
 # Main temp directory for current job processing
-TEMP_DIR = STORAGE_DIRS["backend_temp"]
-UPLOADS_DIR = STORAGE_DIRS["backend_uploads"]
-RESULTS_DIR = STORAGE_DIRS["results"]
+TEMP_DIR = str(STORAGE_DIRS["backend_temp"])
+UPLOADS_DIR = str(STORAGE_DIRS["backend_uploads"])
+RESULTS_DIR = str(STORAGE_DIRS["results"])
 
 def save_job_metadata(job_id: str):
     """Saves job metadata to a JSON file for persistence."""
@@ -43,7 +44,7 @@ def save_job_metadata(job_id: str):
     
     job_data = jobs[job_id]
     
-    metadata_path = os.path.join(RESULTS_DIR, f"metadata_{job_id}.json")
+    metadata_path = Path(RESULTS_DIR) / f"metadata_{job_id}.json"
     try:
         with open(metadata_path, "w") as f:
             json.dump(to_json_safe(job_data), f, indent=2)
@@ -52,32 +53,33 @@ def save_job_metadata(job_id: str):
 
 def load_history():
     """Loads job history from metadata files in RESULTS_DIR."""
-    if not os.path.exists(RESULTS_DIR):
+    results_path = Path(RESULTS_DIR)
+    if not results_path.exists():
         return
     
-    for filename in os.listdir(RESULTS_DIR):
-        if filename.startswith("metadata_") and filename.endswith(".json"):
-            metadata_path = os.path.join(RESULTS_DIR, filename)
-            try:
-                with open(metadata_path, "r") as f:
-                    job_data = json.load(f)
-                    job_id = job_data.get("job_id")
-                    if job_id:
-                        # Convert ISO string back to datetime
-                        if job_data.get("created_at"):
-                            job_data["created_at"] = datetime.fromisoformat(job_data["created_at"].replace('Z', '+00:00'))
-                        if job_data.get("last_update"):
-                            job_data["last_update"] = datetime.fromisoformat(job_data["last_update"].replace('Z', '+00:00'))
-                        
-                        # Convert logs timestamps back
-                        if "logs" in job_data:
-                            for log in job_data["logs"]:
-                                if isinstance(log.get("timestamp"), str):
-                                    log["timestamp"] = datetime.fromisoformat(log["timestamp"].replace('Z', '+00:00'))
-                        
-                        jobs[job_id] = job_data
-            except Exception as e:
-                logger.error(f"Error loading metadata from {filename}: {e}")
+    for metadata_path in results_path.glob("metadata_*.json"):
+        try:
+            with open(metadata_path, "r") as f:
+                job_data = json.load(f)
+                job_id = job_data.get("job_id")
+                if job_id:
+                    # Convert ISO string back to datetime
+                    if job_data.get("created_at"):
+                        job_data["created_at"] = datetime.fromisoformat(job_data["created_at"].replace('Z', '+00:00'))
+                    if job_data.get("completed_at"):
+                        job_data["completed_at"] = datetime.fromisoformat(job_data["completed_at"].replace('Z', '+00:00'))
+                    if job_data.get("last_update"):
+                        job_data["last_update"] = datetime.fromisoformat(job_data["last_update"].replace('Z', '+00:00'))
+                    
+                    # Convert logs timestamps back
+                    if "logs" in job_data:
+                        for log in job_data["logs"]:
+                            if isinstance(log.get("timestamp"), str):
+                                log["timestamp"] = datetime.fromisoformat(log["timestamp"].replace('Z', '+00:00'))
+                    
+                    jobs[job_id] = job_data
+        except Exception as e:
+            logger.error(f"Error loading metadata from {metadata_path}: {e}")
 
 # Load history on module import
 load_history()
@@ -397,6 +399,7 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
         jobs[job_id]["progress_percent"] = 100
         jobs[job_id]["stage"] = "completed"
         jobs[job_id]["message"] = "Análisis completado exitosamente."
+        jobs[job_id]["completed_at"] = now
         jobs[job_id]["last_update"] = now
         
         add_job_log(job_id, "INFO", "completed", "Análisis finalizado correctamente. Resultados guardados.")
@@ -441,6 +444,19 @@ def get_history() -> List[Dict[str, Any]]:
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return jobs.get(job_id)
+
+def get_last_job(analysis_type: str) -> Optional[Dict[str, Any]]:
+    """Returns the most recent completed job for a given analysis type."""
+    relevant_jobs = [
+        j for j in jobs.values() 
+        if j.get("analysis_type") == analysis_type and j["status"] == "completed"
+    ]
+    if not relevant_jobs:
+        return None
+    
+    # Sort by created_at descending
+    relevant_jobs.sort(key=lambda x: x["created_at"], reverse=True)
+    return relevant_jobs[0]
 
 def run_analysis_task(
     job_id: str, 

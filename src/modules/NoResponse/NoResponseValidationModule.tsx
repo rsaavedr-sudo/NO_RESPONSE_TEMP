@@ -11,7 +11,7 @@ import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { LineStateDistributionChart } from '../../components/LineStateDistributionChart';
 import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
 import { JobLogsModal } from '../../components/JobLogsModal';
-import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis, getLastJobStatus } from '../../api/client';
 import { JobStatus } from '../../types/api';
 import { Terminal } from 'lucide-react';
 
@@ -127,6 +127,20 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
   };
 
   useEffect(() => {
+    const fetchLastJob = async () => {
+      try {
+        const lastJob = await getLastJobStatus('no_response_validation');
+        if (lastJob) {
+          setJobStatus(lastJob);
+          setActiveJobId(lastJob.job_id);
+          log('validation', 'último análisis restaurado', lastJob.job_id);
+        }
+      } catch (err) {
+        // No last job found, ignore
+      }
+    };
+    fetchLastJob();
+
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };

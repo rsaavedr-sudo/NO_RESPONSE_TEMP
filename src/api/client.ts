@@ -83,6 +83,11 @@ export const getJobStatus = async (jobId: string) => {
   return response.data;
 };
 
+export const getLastJobStatus = async (analysisType: string) => {
+  const response = await axios.get<JobStatus>(`${API_BASE_URL}/jobs/last/${analysisType}`);
+  return response.data;
+};
+
 export const getDownloadUrl = (jobId: string) => {
   return `${API_BASE_URL}/download/${jobId}`;
 };

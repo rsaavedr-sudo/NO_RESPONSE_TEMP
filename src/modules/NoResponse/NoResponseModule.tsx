@@ -10,7 +10,7 @@ import { NoResponsePieChart } from '../../components/NoResponsePieChart';
 import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { AnalysisCriteria } from '../../components/AnalysisCriteria';
 import { JobLogsModal } from '../../components/JobLogsModal';
-import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis, getLastJobStatus } from '../../api/client';
 import { JobStatus } from '../../types/api';
 import { Terminal } from 'lucide-react';
 
@@ -88,6 +88,20 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   };
 
   useEffect(() => {
+    const fetchLastJob = async () => {
+      try {
+        const lastJob = await getLastJobStatus('no_response');
+        if (lastJob) {
+          setJobStatus(lastJob);
+          setActiveJobId(lastJob.job_id);
+          log('no_response', 'último análisis restaurado', lastJob.job_id);
+        }
+      } catch (err) {
+        // No last job found, ignore
+      }
+    };
+    fetchLastJob();
+
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
