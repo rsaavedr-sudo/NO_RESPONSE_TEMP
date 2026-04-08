@@ -38,7 +38,7 @@ async def startup_event():
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,65 +64,80 @@ async def analyze(
     Starts an asynchronous CDR analysis job with multiple files.
     """
     logger.info(f"[analyze] request recebida: {analysis_type}")
-    if not files:
-        logger.warning("Solicitud sin archivos")
-        raise HTTPException(status_code=400, detail="No files uploaded")
     
-    # Robust parsing of numeric fields
     try:
-        days = int(parse_float(analysis_days, "Días de Análisis"))
-        min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
-        min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
-        min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
-    except Exception as e:
-        logger.error(f"Error parseando parámetros: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        if not files:
+            logger.warning("[analyze] Solicitud sin archivos")
+            raise HTTPException(status_code=400, detail="No files uploaded")
         
-    job_id = create_job(analysis_type=analysis_type)
-    logger.info(f"[analyze] job criado: {job_id}")
-    
-    input_paths = []
-    
-    async def save_one_file(file: UploadFile, index: int):
-        input_filename = f"input_{job_id}_{index}.csv"
-        input_path = os.path.join(UPLOADS_DIR, input_filename)
+        logger.info(f"[analyze] arquivos recebidos: {len(files)}")
         
-        # Use to_thread to avoid blocking the event loop for file I/O
-        with open(input_path, "wb") as buffer:
-            await asyncio.to_thread(shutil.copyfileobj, file.file, buffer)
-        return input_path
+        # Robust parsing of numeric fields
+        try:
+            days = int(parse_float(analysis_days, "Días de Análisis"))
+            min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
+            min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
+            min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
+        except Exception as e:
+            logger.error(f"[analyze] Error parseando parámetros: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+            
+        job_id = create_job(analysis_type=analysis_type)
+        logger.info(f"[analyze] job criado: {job_id}")
+        
+        input_paths = []
+        
+        async def save_one_file(file: UploadFile, index: int):
+            input_filename = f"input_{job_id}_{index}.csv"
+            input_path = os.path.join(UPLOADS_DIR, input_filename)
+            
+            # Use to_thread to avoid blocking the event loop for file I/O
+            try:
+                with open(input_path, "wb") as buffer:
+                    await asyncio.to_thread(shutil.copyfileobj, file.file, buffer)
+                return input_path
+            except Exception as e:
+                logger.error(f"[analyze] Error salvando arquivo {file.filename}: {e}")
+                raise e
 
-    try:
-        logger.info(f"Iniciando guardado de {len(files)} archivos...")
-        # Save files in parallel
-        save_tasks = [save_one_file(file, i) for i, file in enumerate(files)]
-        input_paths = await asyncio.gather(*save_tasks)
-        logger.info("[analyze] arquivos salvos")
-                
+        try:
+            logger.info(f"[analyze] Iniciando guardado de {len(files)} arquivos...")
+            # Save files in parallel
+            save_tasks = [save_one_file(file, i) for i, file in enumerate(files)]
+            input_paths = await asyncio.gather(*save_tasks)
+            logger.info("[analyze] arquivos salvos")
+                    
+        except Exception as e:
+            logger.error(f"[analyze] Error saving uploaded files: {str(e)}")
+            # Cleanup any files already saved
+            for path in input_paths:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except:
+                        pass
+            raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
+        
+        # Start background task
+        background_tasks.add_task(
+            run_analysis_task, 
+            job_id=job_id, 
+            input_paths=input_paths, 
+            analysis_days=days, 
+            min_frequency=min_freq,
+            min_total_frequency=min_total,
+            min_avg_daily_frequency=min_avg
+        )
+        
+        logger.info(f"[analyze] processamento em background iniciado para job {job_id}")
+        logger.info(f"[analyze] resposta enviada para job {job_id}")
+        return {"job_id": job_id, "status": "pending", "analysis_type": analysis_type}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error saving uploaded files: {str(e)}")
-        # Cleanup any files already saved
-        for path in input_paths:
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except:
-                    pass
-        raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
-    
-    # Start background task
-    background_tasks.add_task(
-        run_analysis_task, 
-        job_id=job_id, 
-        input_paths=input_paths, 
-        analysis_days=days, 
-        min_frequency=min_freq,
-        min_total_frequency=min_total,
-        min_avg_daily_frequency=min_avg
-    )
-    
-    logger.info(f"[analyze] resposta enviada para job {job_id}")
-    return {"job_id": job_id, "status": "pending", "analysis_type": analysis_type}
+        logger.error(f"[analyze] Erro inesperado: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @api_router.get("/jobs/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
