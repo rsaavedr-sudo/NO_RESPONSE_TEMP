@@ -24,8 +24,7 @@ app = FastAPI(title="CDR Analyzer API")
 async def periodic_cleanup():
     while True:
         try:
-            # Use to_thread to avoid blocking the event loop
-            await asyncio.to_thread(auto_cleanup)
+            auto_cleanup()
             logger.info("Auto-cleanup completed")
         except Exception as e:
             logger.error(f"Error in auto-cleanup: {e}")
@@ -38,7 +37,7 @@ async def startup_event():
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,81 +62,50 @@ async def analyze(
     """
     Starts an asynchronous CDR analysis job with multiple files.
     """
-    logger.info(f"[analyze] request recebida: {analysis_type}")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    
+    # Robust parsing of numeric fields
+    try:
+        days = int(parse_float(analysis_days, "Días de Análisis"))
+        min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
+        min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
+        min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    job_id = create_job(analysis_type=analysis_type)
+    input_paths = []
     
     try:
-        if not files:
-            logger.warning("[analyze] Solicitud sin archivos")
-            raise HTTPException(status_code=400, detail="No files uploaded")
-        
-        logger.info(f"[analyze] arquivos recebidos: {len(files)}")
-        
-        # Robust parsing of numeric fields
-        try:
-            days = int(parse_float(analysis_days, "Días de Análisis"))
-            min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
-            min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
-            min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
-        except Exception as e:
-            logger.error(f"[analyze] Error parseando parámetros: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
-            
-        job_id = create_job(analysis_type=analysis_type)
-        logger.info(f"[analyze] job criado: {job_id}")
-        
-        input_paths = []
-        
-        async def save_one_file(file: UploadFile, index: int):
-            input_filename = f"input_{job_id}_{index}.csv"
+        for i, file in enumerate(files):
+            input_filename = f"input_{job_id}_{i}.csv"
             input_path = os.path.join(UPLOADS_DIR, input_filename)
+            input_paths.append(input_path)
             
-            # Use to_thread to avoid blocking the event loop for file I/O
-            try:
-                with open(input_path, "wb") as buffer:
-                    await asyncio.to_thread(shutil.copyfileobj, file.file, buffer)
-                return input_path
-            except Exception as e:
-                logger.error(f"[analyze] Error salvando arquivo {file.filename}: {e}")
-                raise e
-
-        try:
-            logger.info(f"[analyze] Iniciando guardado de {len(files)} arquivos...")
-            # Save files in parallel
-            save_tasks = [save_one_file(file, i) for i, file in enumerate(files)]
-            input_paths = await asyncio.gather(*save_tasks)
-            logger.info("[analyze] arquivos salvos")
-                    
-        except Exception as e:
-            logger.error(f"[analyze] Error saving uploaded files: {str(e)}")
-            # Cleanup any files already saved
-            for path in input_paths:
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except:
-                        pass
-            raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
-        
-        # Start background task
-        background_tasks.add_task(
-            run_analysis_task, 
-            job_id=job_id, 
-            input_paths=input_paths, 
-            analysis_days=days, 
-            min_frequency=min_freq,
-            min_total_frequency=min_total,
-            min_avg_daily_frequency=min_avg
-        )
-        
-        logger.info(f"[analyze] processamento em background iniciado para job {job_id}")
-        logger.info(f"[analyze] resposta enviada para job {job_id}")
-        return {"job_id": job_id, "status": "pending", "analysis_type": analysis_type}
-
-    except HTTPException:
-        raise
+            with open(input_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
     except Exception as e:
-        logger.error(f"[analyze] Erro inesperado: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        logger.error(f"Error saving uploaded files: {str(e)}")
+        # Cleanup any files already saved
+        for path in input_paths:
+            if os.path.exists(path):
+                os.remove(path)
+        raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
+    
+    # Start background task
+    background_tasks.add_task(
+        run_analysis_task, 
+        job_id=job_id, 
+        input_paths=input_paths, 
+        analysis_days=days, 
+        min_frequency=min_freq,
+        min_total_frequency=min_total,
+        min_avg_daily_frequency=min_avg
+    )
+    
+    return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}
 
 @api_router.get("/jobs/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
@@ -167,8 +135,8 @@ async def get_job_status(job_id: str):
             stage=safe_job["stage"],
             message=safe_job["message"],
             stats=stats,
-            result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
+            result_url=f"/api/download/{job_id}" if safe_job["status"] == "completed" else None,
+            detailed_result_url=f"/api/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
@@ -253,8 +221,8 @@ async def list_history():
             stage=safe_job["stage"],
             message=safe_job["message"],
             stats=stats,
-            result_url=f"/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
+            result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
@@ -403,8 +371,8 @@ async def stream_job_status(job_id: str):
                     "message": safe_job["message"],
                     "stats": stats_dict,
                     "error": safe_job["error"],
-                    "result_url": f"/download/{job_id}" if safe_job["status"] == "completed" else None,
-                    "detailed_result_url": f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
+                    "result_url": f"/api/download/{job_id}" if safe_job["status"] == "completed" else None,
+                    "detailed_result_url": f"/api/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
                     "logs": safe_job.get("logs", []),
                     "last_update": safe_job.get("last_update") or safe_job.get("created_at"),
                     "created_at": safe_job.get("created_at")
@@ -431,19 +399,9 @@ async def stream_job_status(job_id: str):
 async def download_result(job_id: str):
     """
     Downloads the result CSV for a completed job.
+    Alias for download_detailed_result as requested by user.
     """
-    job = get_job(job_id)
-    if not job or job["status"] != "completed":
-        raise HTTPException(status_code=404, detail="Result not found or job not completed")
-    
-    if not job["result_path"] or not os.path.exists(job["result_path"]):
-        raise HTTPException(status_code=404, detail="Result file missing")
-    
-    return FileResponse(
-        path=job["result_path"],
-        filename=f"analisis_cdr_{job_id}.csv",
-        media_type="text/csv"
-    )
+    return await download_detailed_result(job_id)
 
 app.include_router(api_router)
 

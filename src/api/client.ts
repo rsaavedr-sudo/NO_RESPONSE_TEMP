@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { AnalysisStats, JobStatus } from '../types/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 console.log('API_BASE_URL initialized as:', API_BASE_URL);
 
 export const apiClient = axios.create({
