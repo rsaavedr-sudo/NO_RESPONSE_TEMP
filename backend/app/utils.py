@@ -19,6 +19,8 @@ def to_json_safe(obj: Any) -> Any:
         return bool(obj)
     elif isinstance(obj, np.ndarray):
         return to_json_safe(obj.tolist())
+    elif hasattr(obj, "isoformat") and callable(getattr(obj, "isoformat")):
+        return obj.isoformat()
     elif pd.isna(obj) if not isinstance(obj, (dict, list, tuple, set, np.ndarray)) else False:
         return None
     elif hasattr(obj, "item") and callable(getattr(obj, "item")):

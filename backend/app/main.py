@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
 from typing import List, Optional
+from datetime import datetime
 import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse, StorageStats
@@ -111,30 +112,38 @@ async def get_job_status(job_id: str):
     """
     Returns the current status of a job.
     """
+    logger.info(f"Consultando status do job: {job_id}")
     job = get_job(job_id)
     if not job:
+        logger.warning(f"Job não encontrado: {job_id}")
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Sanitize job data for JSON serialization
-    safe_job = to_json_safe(job)
-    
-    # Map stats to Pydantic model if exists
-    stats = None
-    if safe_job["stats"]:
-        stats = AnalysisStats(**safe_job["stats"])
-    
-    return JobStatus(
-        job_id=safe_job["job_id"],
-        status=safe_job["status"],
-        analysis_type=safe_job.get("analysis_type", "no_response"),
-        progress_percent=safe_job["progress_percent"],
-        stage=safe_job["stage"],
-        message=safe_job["message"],
-        stats=stats,
-        result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
-        detailed_result_url=f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
-        error=safe_job["error"]
-    )
+    try:
+        # Sanitize job data for JSON serialization
+        safe_job = to_json_safe(job)
+        
+        # Map stats to Pydantic model if exists
+        stats = None
+        if safe_job.get("stats"):
+            stats = AnalysisStats(**safe_job["stats"])
+        
+        return JobStatus(
+            job_id=safe_job["job_id"],
+            status=safe_job["status"],
+            analysis_type=safe_job.get("analysis_type", "no_response"),
+            progress_percent=safe_job["progress_percent"],
+            stage=safe_job["stage"],
+            message=safe_job["message"],
+            stats=stats,
+            result_url=f"/download/{job_id}" if safe_job["status"] == "completed" else None,
+            detailed_result_url=f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
+            error=safe_job.get("error"),
+            logs=safe_job.get("logs", []),
+            last_update=safe_job.get("last_update") or safe_job.get("created_at")
+        )
+    except Exception as e:
+        logger.exception(f"Erro ao processar status do job {job_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error processing job status: {str(e)}")
 
 @api_router.get("/download_detailed/{job_id}")
 async def download_detailed_result(job_id: str):
@@ -213,7 +222,9 @@ async def list_history():
             stats=stats,
             result_url=f"/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
             detailed_result_url=f"/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
-            error=safe_job.get("error")
+            error=safe_job.get("error"),
+            logs=safe_job.get("logs", []),
+            last_update=safe_job.get("last_update") or safe_job.get("created_at")
         ))
     return safe_history
 
@@ -358,7 +369,10 @@ async def stream_job_status(job_id: str):
                     "message": safe_job["message"],
                     "stats": stats_dict,
                     "error": safe_job["error"],
-                    "result_url": f"/download/{job_id}" if safe_job["status"] == "completed" else None
+                    "result_url": f"/download/{job_id}" if safe_job["status"] == "completed" else None,
+                    "detailed_result_url": f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
+                    "logs": safe_job.get("logs", []),
+                    "last_update": safe_job.get("last_update") or safe_job.get("created_at")
                 }
                 
                 yield {

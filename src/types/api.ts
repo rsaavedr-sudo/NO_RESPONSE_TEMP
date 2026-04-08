@@ -67,6 +67,14 @@ export interface AnalysisStats {
   cdr_stats?: any[];
 }
 
+export interface JobLog {
+  timestamp: string;
+  level: 'INFO' | 'WARNING' | 'ERROR';
+  stage: string;
+  message: string;
+  details?: string;
+}
+
 export interface JobStatus {
   job_id: string;
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned';
@@ -78,4 +86,6 @@ export interface JobStatus {
   result_url?: string;
   detailed_result_url?: string;
   error?: string;
+  logs?: JobLog[];
+  last_update?: string;
 }
