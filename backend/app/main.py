@@ -95,6 +95,7 @@ async def analyze(
         raise HTTPException(status_code=500, detail=f"Could not save files: {str(e)}")
     
     # Start background task
+    logger.info(f"Encolando task para job {job_id}")
     background_tasks.add_task(
         run_analysis_task, 
         job_id=job_id, 

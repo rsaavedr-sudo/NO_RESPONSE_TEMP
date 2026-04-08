@@ -300,6 +300,8 @@ def analyze_cdr_chunked(
                 if progress_callback:
                     # Pass 2 is 30% to 90%
                     p = 30 + int((rows_processed_pass2 / total_rows) * 60)
+                    if rows_processed_pass2 <= chunk_size:
+                        logger.info(f"Primer bloque procesado para job. Filas: {rows_processed_pass2}")
                     progress_callback(p, "processing_chunks", f"Analizando registros... {rows_processed_pass2}/{total_rows}", processed_records=rows_processed_pass2)
 
         # Final Classification and Output Generation
