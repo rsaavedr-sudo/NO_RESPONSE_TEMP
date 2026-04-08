@@ -78,6 +78,7 @@ class JobStatus(BaseModel):
     error: Optional[str] = None
     logs: List[JobLog] = []
     last_update: datetime
+    created_at: datetime
 
 class AnalyzeResponse(BaseModel):
     job_id: str

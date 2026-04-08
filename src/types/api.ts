@@ -88,4 +88,5 @@ export interface JobStatus {
   error?: string;
   logs?: JobLog[];
   last_update?: string;
+  created_at: string;
 }

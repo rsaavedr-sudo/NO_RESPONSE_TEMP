@@ -47,7 +47,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.3.0"}
+    return {"status": "ok", "version": "2.4.0"}
 
 @api_router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
@@ -139,7 +139,8 @@ async def get_job_status(job_id: str):
             detailed_result_url=f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             logs=safe_job.get("logs", []),
-            last_update=safe_job.get("last_update") or safe_job.get("created_at")
+            last_update=safe_job.get("last_update") or safe_job.get("created_at"),
+            created_at=safe_job.get("created_at")
         )
     except Exception as e:
         logger.exception(f"Erro ao processar status do job {job_id}: {str(e)}")
@@ -224,7 +225,8 @@ async def list_history():
             detailed_result_url=f"/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
             logs=safe_job.get("logs", []),
-            last_update=safe_job.get("last_update") or safe_job.get("created_at")
+            last_update=safe_job.get("last_update") or safe_job.get("created_at"),
+            created_at=safe_job.get("created_at")
         ))
     return safe_history
 
@@ -372,7 +374,8 @@ async def stream_job_status(job_id: str):
                     "result_url": f"/download/{job_id}" if safe_job["status"] == "completed" else None,
                     "detailed_result_url": f"/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
                     "logs": safe_job.get("logs", []),
-                    "last_update": safe_job.get("last_update") or safe_job.get("created_at")
+                    "last_update": safe_job.get("last_update") or safe_job.get("created_at"),
+                    "created_at": safe_job.get("created_at")
                 }
                 
                 yield {

@@ -34,6 +34,22 @@ export const HistoryModule: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<JobStatus | null>(null);
   const [showLogs, setShowLogs] = useState(false);
 
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${day} ${month} ${year} · ${hours}:${minutes}`;
+    } catch (e) {
+      return dateString;
+    }
+  };
+
   const fetchHistory = async () => {
     setLoading(true);
     try {
@@ -200,6 +216,10 @@ export const HistoryModule: React.FC = () => {
                         <h3 className="font-black text-gray-900 truncate max-w-[200px] md:max-w-md">
                           {item.analysis_type.toUpperCase()} Analysis
                         </h3>
+                        <p className="text-[10px] font-bold text-gray-400 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3" />
+                          {formatDate(item.created_at)}
+                        </p>
                       </div>
                     </div>
 
@@ -257,7 +277,7 @@ export const HistoryModule: React.FC = () => {
                         <Calendar className="w-3 h-3" /> Fecha
                       </span>
                       <p className="text-sm font-bold text-gray-900">
-                        {new Date().toLocaleDateString()}
+                        {formatDate(selectedJob.created_at)}
                       </p>
                     </div>
                     <div className="p-4 bg-gray-50 rounded-2xl space-y-1">
