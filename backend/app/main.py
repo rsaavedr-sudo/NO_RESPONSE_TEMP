@@ -24,7 +24,8 @@ app = FastAPI(title="CDR Analyzer API")
 async def periodic_cleanup():
     while True:
         try:
-            auto_cleanup()
+            # Use to_thread to avoid blocking the event loop
+            await asyncio.to_thread(auto_cleanup)
             logger.info("Auto-cleanup completed")
         except Exception as e:
             logger.error(f"Error in auto-cleanup: {e}")
@@ -62,7 +63,9 @@ async def analyze(
     """
     Starts an asynchronous CDR analysis job with multiple files.
     """
+    logger.info(f"Recibida solicitud de análisis: {analysis_type}")
     if not files:
+        logger.warning("Solicitud sin archivos")
         raise HTTPException(status_code=400, detail="No files uploaded")
     
     # Robust parsing of numeric fields
@@ -71,20 +74,28 @@ async def analyze(
         min_freq = int(parse_float(min_frequency, "Frecuencia Mínima"))
         min_total = int(parse_float(min_total_frequency, "Min Frequency")) if min_total_frequency else None
         min_avg = parse_float(min_avg_daily_frequency, "Avg Daily Freq") if min_avg_daily_frequency else None
+        logger.info(f"Parámetros parseados: days={days}, min_freq={min_freq}")
     except ValueError as e:
+        logger.error(f"Error parseando parámetros: {e}")
         raise HTTPException(status_code=400, detail=str(e))
         
     job_id = create_job(analysis_type=analysis_type)
+    logger.info(f"Job ID creado: {job_id}")
+    
     input_paths = []
     
     try:
+        logger.info(f"Iniciando guardado de {len(files)} archivos...")
         for i, file in enumerate(files):
             input_filename = f"input_{job_id}_{i}.csv"
             input_path = os.path.join(UPLOADS_DIR, input_filename)
             input_paths.append(input_path)
             
+            logger.info(f"Guardando archivo {i+1}/{len(files)}: {file.filename} -> {input_path}")
             with open(input_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+                # Use to_thread to avoid blocking the event loop for file I/O
+                await asyncio.to_thread(shutil.copyfileobj, file.file, buffer)
+        logger.info("Todos os arquivos salvos com sucesso.")
                 
     except Exception as e:
         logger.error(f"Error saving uploaded files: {str(e)}")
@@ -106,6 +117,7 @@ async def analyze(
         min_avg_daily_frequency=min_avg
     )
     
+    logger.info(f"Respuesta enviada para job {job_id}")
     return {"job_id": job_id, "status": "queued", "analysis_type": analysis_type}
 
 @api_router.get("/jobs/{job_id}", response_model=JobStatus)

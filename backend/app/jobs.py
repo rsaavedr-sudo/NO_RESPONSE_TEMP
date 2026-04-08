@@ -4,6 +4,7 @@ import os
 import logging
 import json
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
@@ -14,10 +15,13 @@ logger = logging.getLogger(__name__)
 # Global job store and lock
 jobs: Dict[str, Any] = {}
 jobs_lock = threading.Lock()
+persistence_executor = ThreadPoolExecutor(max_workers=1)
 
 # Storage directories
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # backend/
 ROOT_DIR = os.path.dirname(APP_DIR) # project root
+
+logger.info(f"Paths detectados: APP_DIR={APP_DIR}, ROOT_DIR={ROOT_DIR}")
 
 STORAGE_DIRS = {
     "temp": os.path.join(ROOT_DIR, "temp"),
@@ -28,9 +32,15 @@ STORAGE_DIRS = {
 }
 
 # Ensure directories exist
-for d in STORAGE_DIRS.values():
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
+for name, d in STORAGE_DIRS.items():
+    try:
+        if not os.path.exists(d):
+            os.makedirs(d, exist_ok=True)
+            logger.info(f"Directorio creado: {name} -> {d}")
+        else:
+            logger.info(f"Directorio ya existe: {name} -> {d}")
+    except Exception as e:
+        logger.error(f"Error creando directorio {name} ({d}): {e}")
 
 # Main temp directory for current job processing
 TEMP_DIR = STORAGE_DIRS["backend_temp"]
@@ -38,7 +48,7 @@ UPLOADS_DIR = STORAGE_DIRS["backend_uploads"]
 RESULTS_DIR = STORAGE_DIRS["results"]
 
 def save_job_metadata(job_id: str):
-    """Saves job metadata to a JSON file for persistence."""
+    """Saves job metadata to a JSON file for persistence. Internal function."""
     with jobs_lock:
         if job_id not in jobs:
             return
@@ -60,15 +70,27 @@ def save_job_metadata(job_id: str):
     except Exception as e:
         logger.error(f"Error saving metadata file for job {job_id}: {e}")
 
+def persist_job(job_id: str):
+    """Persists job metadata in a background thread to avoid blocking."""
+    persistence_executor.submit(save_job_metadata, job_id)
+
 def load_history():
     """Loads job history from metadata files in RESULTS_DIR."""
     if not os.path.exists(RESULTS_DIR):
+        logger.info(f"Directorio de resultados no existe: {RESULTS_DIR}")
         return
     
-    logger.info("Cargando historial de jobs desde disco...")
-    loaded_count = 0
-    for filename in os.listdir(RESULTS_DIR):
-        if filename.startswith("metadata_") and filename.endswith(".json"):
+    logger.info(f"Cargando historial de jobs desde: {RESULTS_DIR}")
+    try:
+        files = [f for f in os.listdir(RESULTS_DIR) if f.startswith("metadata_") and f.endswith(".json")]
+        # Sort by modification time to get latest first
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(RESULTS_DIR, x)), reverse=True)
+        
+        # Limit to last 100 jobs to avoid slow startup
+        files = files[:100]
+        
+        loaded_count = 0
+        for filename in files:
             metadata_path = os.path.join(RESULTS_DIR, filename)
             try:
                 with open(metadata_path, "r") as f:
@@ -100,7 +122,9 @@ def load_history():
                         loaded_count += 1
             except Exception as e:
                 logger.error(f"Error loading metadata from {filename}: {e}")
-    logger.info(f"Historial cargado: {loaded_count} jobs.")
+        logger.info(f"Historial cargado: {loaded_count} jobs.")
+    except Exception as e:
+        logger.error(f"Error listando directorio de resultados: {e}")
 
 # Load history on module import
 load_history()
@@ -111,6 +135,7 @@ class CancellationException(Exception):
 
 def create_job(analysis_type: str = "no_response") -> str:
     job_id = str(uuid.uuid4())
+    logger.info(f"Iniciando creación de job {job_id} para {analysis_type}")
     now = datetime.utcnow()
     job_data = {
         "job_id": job_id,
@@ -139,8 +164,13 @@ def create_job(analysis_type: str = "no_response") -> str:
     with jobs_lock:
         jobs[job_id] = job_data
     
-    logger.info(f"Job creado: {job_id} ({analysis_type})")
-    save_job_metadata(job_id)
+    logger.info(f"Job {job_id} guardado en memoria. Persistiendo metadata...")
+    try:
+        persist_job(job_id)
+        logger.info(f"Job {job_id} persistido exitosamente.")
+    except Exception as e:
+        logger.error(f"Error persistiendo job inicial {job_id}: {e}")
+        
     return job_id
 
 def add_job_log(job_id: str, level: str, stage: str, message: str, details: Optional[str] = None, processed_records: Optional[int] = None):
@@ -179,7 +209,7 @@ def add_job_log(job_id: str, level: str, stage: str, message: str, details: Opti
         logger.info(log_msg)
         
     # Persist log entry
-    save_job_metadata(job_id)
+    persist_job(job_id)
 
 def cancel_job(job_id: str):
     with jobs_lock:
@@ -193,7 +223,7 @@ def cancel_job(job_id: str):
     
     add_job_log(job_id, "WARNING", "stopped", "Proceso detenido por el usuario")
     logger.info(f"Job {job_id} marked as cancelled")
-    save_job_metadata(job_id)
+    persist_job(job_id)
 
 def get_dir_stats(directory: str):
     count = 0
@@ -326,7 +356,7 @@ def cleanup_directory(directory: str, max_age_hours: Optional[int] = None, exclu
                             jobs[job_id]["status"] = "cleaned"
                             jobs[job_id]["message"] = "Los resultados han sido eliminados para liberar espacio."
                     # Update metadata file
-                    save_job_metadata(job_id)
+                    persist_job(job_id)
             
             # If metadata file is deleted, remove from memory
             if filename.startswith("metadata_"):
@@ -413,7 +443,7 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str, pro
         add_job_log(job_id, "INFO", stage, message, processed_records=processed_records)
     else:
         # Still save metadata even if no log added, to persist progress
-        save_job_metadata(job_id)
+        persist_job(job_id)
 
 def set_job_error(job_id: str, error: str):
     with jobs_lock:
@@ -425,7 +455,7 @@ def set_job_error(job_id: str, error: str):
             jobs[job_id]["last_update"] = now
     
     add_job_log(job_id, "ERROR", "failed", f"Error crítico: {error}")
-    save_job_metadata(job_id)
+    persist_job(job_id)
 
 def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
     with jobs_lock:
@@ -448,7 +478,7 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
             jobs[job_id]["last_update"] = now
         
     add_job_log(job_id, "INFO", "completed", "Análisis finalizado correctamente. Resultados guardados.")
-    save_job_metadata(job_id)
+    persist_job(job_id)
 
 def delete_job(job_id: str):
     """Deletes all files associated with a job and removes it from memory."""
