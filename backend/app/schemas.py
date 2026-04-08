@@ -42,6 +42,7 @@ class AnalysisStats(BaseModel):
     total_analizados: Optional[int] = None
     pct_con_respuesta: Optional[float] = None
     tp_line_state: Optional[Dict[str, int]] = None
+    linestate_distribution: Optional[Dict[str, Any]] = None
 
     # LineState fields
     inactiva_count: Optional[int] = None
@@ -57,6 +58,13 @@ class AnalysisStats(BaseModel):
     last_date: Optional[str] = None
     cdr_stats: Optional[List[Dict[str, Any]]] = None
 
+class JobLog(BaseModel):
+    timestamp: datetime
+    level: str  # INFO, WARNING, ERROR
+    stage: str
+    message: str
+    details: Optional[str] = None
+
 class JobStatus(BaseModel):
     job_id: str
     status: str
@@ -68,6 +76,8 @@ class JobStatus(BaseModel):
     result_url: Optional[str] = None
     detailed_result_url: Optional[str] = None
     error: Optional[str] = None
+    logs: List[JobLog] = []
+    last_update: datetime
 
 class AnalyzeResponse(BaseModel):
     job_id: str

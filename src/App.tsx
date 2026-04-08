@@ -10,6 +10,7 @@ import { NoResponseModule } from './modules/NoResponse/NoResponseModule';
 import { ASRModule } from './modules/ASR/AsrModule';
 import { NoResponseValidationModule } from './modules/NoResponse/NoResponseValidationModule';
 import { MaintenanceModule } from './modules/Maintenance/MaintenanceModule';
+import { HistoryModule } from './modules/History/HistoryModule';
 
 const App: React.FC = () => {
   const [activeModule, setActiveModule] = useState<ModuleType>('no_response');
@@ -41,6 +42,8 @@ const App: React.FC = () => {
         return <ASRModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'maintenance':
         return <MaintenanceModule />;
+      case 'history':
+        return <HistoryModule />;
       default:
         return <NoResponseModule log={log} setLastEndpoint={setLastEndpoint} />;
     }
@@ -59,7 +62,7 @@ const App: React.FC = () => {
               <span className="text-2xl font-black tracking-tighter text-gray-900 leading-none">T-ZERO</span>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold tracking-[0.2em] text-blue-600 uppercase">CDR Platform</span>
-                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v2.1.1</span>
+                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v2.3.0</span>
               </div>
             </div>
           </div>

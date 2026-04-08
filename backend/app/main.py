@@ -10,7 +10,7 @@ from typing import List, Optional
 import json
 
 from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse, StorageStats
-from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup
+from .jobs import create_job, run_analysis_task, get_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
 from .utils import to_json_safe, parse_float
 
 # Configure logging
@@ -46,7 +46,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.1.2"}
+    return {"status": "ok", "version": "2.3.0"}
 
 @api_router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(
@@ -190,6 +190,69 @@ async def cancel_analysis(job_id: str):
         
     cancel_job(job_id)
     return {"status": "ok", "message": "Proceso detenido por el usuario"}
+
+@api_router.get("/history", response_model=List[JobStatus])
+async def list_history():
+    """Returns a list of all completed or failed analyses."""
+    history = get_history()
+    safe_history = []
+    for job in history:
+        # Sanitize job data
+        safe_job = to_json_safe(job)
+        stats = None
+        if safe_job.get("stats"):
+            stats = AnalysisStats(**safe_job["stats"])
+        
+        safe_history.append(JobStatus(
+            job_id=safe_job["job_id"],
+            status=safe_job["status"],
+            analysis_type=safe_job.get("analysis_type", "no_response"),
+            progress_percent=safe_job["progress_percent"],
+            stage=safe_job["stage"],
+            message=safe_job["message"],
+            stats=stats,
+            result_url=f"/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
+            detailed_result_url=f"/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
+            error=safe_job.get("error")
+        ))
+    return safe_history
+
+@api_router.delete("/history/{job_id}")
+async def delete_history_item(job_id: str):
+    """Deletes a specific analysis from history."""
+    success = delete_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "ok", "message": "Análisis eliminado correctamente"}
+
+@api_router.get("/jobs/{job_id}/logs/download")
+async def download_job_logs(job_id: str):
+    """
+    Downloads the full log of a job as a text file.
+    """
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    logs = job.get("logs", [])
+    log_lines = []
+    for log in logs:
+        ts = log["timestamp"]
+        if isinstance(ts, datetime):
+            ts = ts.strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{ts}] [{log['level']}] [{log['stage']}] {log['message']}"
+        if log.get("details"):
+            line += f"\nDetails: {log['details']}"
+        log_lines.append(line)
+    
+    content = "\n".join(log_lines)
+    
+    from fastapi.responses import Response
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename=logs_{job_id}.txt"}
+    )
 
 @api_router.get("/maintenance/storage", response_model=SystemStats)
 async def get_storage_stats():

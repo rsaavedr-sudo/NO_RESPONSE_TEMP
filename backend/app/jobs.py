@@ -2,7 +2,8 @@ import uuid
 import threading
 import os
 import logging
-from typing import Dict, Any, Optional
+import json
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
 from .utils import to_json_safe
@@ -35,12 +36,71 @@ TEMP_DIR = STORAGE_DIRS["backend_temp"]
 UPLOADS_DIR = STORAGE_DIRS["backend_uploads"]
 RESULTS_DIR = STORAGE_DIRS["results"]
 
+def save_job_metadata(job_id: str):
+    """Saves job metadata to a JSON file for persistence."""
+    if job_id not in jobs:
+        return
+    
+    job_data = jobs[job_id].copy()
+    # Convert datetime to string for JSON
+    if isinstance(job_data.get("created_at"), datetime):
+        job_data["created_at"] = job_data["created_at"].isoformat()
+    if isinstance(job_data.get("last_update"), datetime):
+        job_data["last_update"] = job_data["last_update"].isoformat()
+    
+    # Convert logs timestamps
+    if "logs" in job_data:
+        job_data["logs"] = [
+            {**log, "timestamp": log["timestamp"].isoformat() if isinstance(log["timestamp"], datetime) else log["timestamp"]}
+            for log in job_data["logs"]
+        ]
+    
+    metadata_path = os.path.join(RESULTS_DIR, f"metadata_{job_id}.json")
+    try:
+        with open(metadata_path, "w") as f:
+            json.dump(to_json_safe(job_data), f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving metadata for job {job_id}: {e}")
+
+def load_history():
+    """Loads job history from metadata files in RESULTS_DIR."""
+    if not os.path.exists(RESULTS_DIR):
+        return
+    
+    for filename in os.listdir(RESULTS_DIR):
+        if filename.startswith("metadata_") and filename.endswith(".json"):
+            metadata_path = os.path.join(RESULTS_DIR, filename)
+            try:
+                with open(metadata_path, "r") as f:
+                    job_data = json.load(f)
+                    job_id = job_data.get("job_id")
+                    if job_id:
+                        # Convert ISO string back to datetime
+                        if job_data.get("created_at"):
+                            job_data["created_at"] = datetime.fromisoformat(job_data["created_at"])
+                        if job_data.get("last_update"):
+                            job_data["last_update"] = datetime.fromisoformat(job_data["last_update"])
+                        
+                        # Convert logs timestamps back
+                        if "logs" in job_data:
+                            for log in job_data["logs"]:
+                                if isinstance(log.get("timestamp"), str):
+                                    log["timestamp"] = datetime.fromisoformat(log["timestamp"])
+                        
+                        jobs[job_id] = job_data
+            except Exception as e:
+                logger.error(f"Error loading metadata from {filename}: {e}")
+
+# Load history on module import
+load_history()
+
 class CancellationException(Exception):
     """Exception raised when a job is cancelled by the user."""
     pass
 
 def create_job(analysis_type: str = "no_response") -> str:
     job_id = str(uuid.uuid4())
+    now = datetime.now()
     jobs[job_id] = {
         "job_id": job_id,
         "analysis_type": analysis_type,
@@ -51,10 +111,48 @@ def create_job(analysis_type: str = "no_response") -> str:
         "stats": None,
         "error": None,
         "result_path": None,
-        "created_at": datetime.now(),
-        "is_cancelled": False
+        "created_at": now,
+        "last_update": now,
+        "is_cancelled": False,
+        "logs": [
+            {
+                "timestamp": now,
+                "level": "INFO",
+                "stage": "queued",
+                "message": f"Análisis {analysis_type} iniciado y en cola.",
+                "details": None
+            }
+        ]
     }
     return job_id
+
+def add_job_log(job_id: str, level: str, stage: str, message: str, details: Optional[str] = None):
+    if job_id in jobs:
+        now = datetime.now()
+        log_entry = {
+            "timestamp": now,
+            "level": level,
+            "stage": stage,
+            "message": message,
+            "details": details
+        }
+        if "logs" not in jobs[job_id]:
+            jobs[job_id]["logs"] = []
+        jobs[job_id]["logs"].append(log_entry)
+        jobs[job_id]["last_update"] = now
+        
+        # Limit logs to 1000 entries to prevent memory issues
+        if len(jobs[job_id]["logs"]) > 1000:
+            jobs[job_id]["logs"] = jobs[job_id]["logs"][-1000:]
+            
+        # Log to system logger as well
+        log_msg = f"[{job_id}] [{stage}] {message}"
+        if level == "ERROR":
+            logger.error(log_msg)
+        elif level == "WARNING":
+            logger.warning(log_msg)
+        else:
+            logger.info(log_msg)
 
 def cancel_job(job_id: str):
     if job_id in jobs:
@@ -62,7 +160,9 @@ def cancel_job(job_id: str):
         jobs[job_id]["status"] = "stopped"
         jobs[job_id]["stage"] = "stopped"
         jobs[job_id]["message"] = "Proceso detenido por el usuario"
+        add_job_log(job_id, "WARNING", "stopped", "Proceso detenido por el usuario")
         logger.info(f"Job {job_id} marked as cancelled")
+        save_job_metadata(job_id)
 
 def get_dir_stats(directory: str):
     count = 0
@@ -194,6 +294,14 @@ def cleanup_directory(directory: str, max_age_hours: Optional[int] = None, exclu
                         if jobs[job_id]["status"] == "completed":
                             jobs[job_id]["status"] = "cleaned"
                             jobs[job_id]["message"] = "Los resultados han sido eliminados para liberar espacio."
+                    # Update metadata file
+                    save_job_metadata(job_id)
+            
+            # If metadata file is deleted, remove from memory
+            if filename.startswith("metadata_"):
+                job_id = filename.replace("metadata_", "").replace(".json", "")
+                if job_id in jobs:
+                    del jobs[job_id]
         except Exception as e:
             logger.error(f"Error deleting {filename}: {e}")
             
@@ -230,8 +338,8 @@ def auto_cleanup():
     cleanup_directory(STORAGE_DIRS["uploads"], max_age_hours=24)
     cleanup_directory(STORAGE_DIRS["backend_uploads"], max_age_hours=24)
     
-    # results: > 24 hours
-    cleanup_directory(STORAGE_DIRS["results"], max_age_hours=24)
+    # results: > 7 days (168 hours)
+    cleanup_directory(STORAGE_DIRS["results"], max_age_hours=168)
 
 def check_cancellation(job_id: str):
     if job_id in jobs and jobs[job_id].get("is_cancelled"):
@@ -243,9 +351,18 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
         if jobs[job_id].get("is_cancelled"):
             raise CancellationException("Proceso detenido por el usuario")
             
+        now = datetime.now()
         jobs[job_id]["progress_percent"] = to_json_safe(percent)
+        
+        # Only add log if stage or message changed significantly, or every 10%
+        old_stage = jobs[job_id].get("stage")
+        old_message = jobs[job_id].get("message")
+        old_percent = jobs[job_id].get("progress_percent", 0)
+        
         jobs[job_id]["stage"] = stage
         jobs[job_id]["message"] = message
+        jobs[job_id]["last_update"] = now
+        
         if stage == "completed":
             jobs[job_id]["status"] = "completed"
         elif stage == "failed":
@@ -254,15 +371,24 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
             jobs[job_id]["status"] = "stopped"
         else:
             jobs[job_id]["status"] = "processing"
+            
+        # Add log for stage transitions or progress milestones
+        if old_stage != stage or (percent % 10 == 0 and percent != old_percent):
+            add_job_log(job_id, "INFO", stage, message)
 
 def set_job_error(job_id: str, error: str):
     if job_id in jobs:
+        now = datetime.now()
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = error
         jobs[job_id]["message"] = f"Error: {error}"
+        jobs[job_id]["last_update"] = now
+        add_job_log(job_id, "ERROR", "failed", f"Error crítico: {error}")
+        save_job_metadata(job_id)
 
 def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
     if job_id in jobs:
+        now = datetime.now()
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["stats"] = to_json_safe(stats)
         jobs[job_id]["result_path"] = result_path
@@ -277,6 +403,47 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
         jobs[job_id]["progress_percent"] = 100
         jobs[job_id]["stage"] = "completed"
         jobs[job_id]["message"] = "Análisis completado exitosamente."
+        jobs[job_id]["last_update"] = now
+        
+        add_job_log(job_id, "INFO", "completed", "Análisis finalizado correctamente. Resultados guardados.")
+        
+        # Persist metadata
+        save_job_metadata(job_id)
+
+def delete_job(job_id: str):
+    """Deletes all files associated with a job and removes it from memory."""
+    if job_id not in jobs:
+        return False
+    
+    # Delete result files
+    job = jobs[job_id]
+    paths = [
+        job.get("result_path"),
+        job.get("detailed_result_path"),
+        os.path.join(RESULTS_DIR, f"metadata_{job_id}.json")
+    ]
+    
+    for path in paths:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception as e:
+                logger.error(f"Error deleting file {path}: {e}")
+    
+    if job_id in jobs:
+        del jobs[job_id]
+    return True
+
+def get_history() -> List[Dict[str, Any]]:
+    """Returns a list of completed or failed jobs."""
+    history = []
+    for job_id, job in jobs.items():
+        if job["status"] in ["completed", "failed", "cleaned"]:
+            history.append(job)
+    
+    # Sort by date descending
+    history.sort(key=lambda x: x["created_at"], reverse=True)
+    return history
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     return jobs.get(job_id)
@@ -292,6 +459,10 @@ def run_analysis_task(
     try:
         job = jobs.get(job_id)
         analysis_type = job.get("analysis_type", "no_response")
+        
+        add_job_log(job_id, "INFO", "starting", f"Iniciando tarea de análisis tipo: {analysis_type}")
+        add_job_log(job_id, "INFO", "starting", f"Archivos a procesar: {', '.join([os.path.basename(p) for p in input_paths])}")
+        add_job_log(job_id, "INFO", "starting", f"Parámetros: días={analysis_days}, freq_min={min_frequency}")
         
         output_filename = f"result_{job_id}.csv"
         output_path = os.path.join(RESULTS_DIR, output_filename)

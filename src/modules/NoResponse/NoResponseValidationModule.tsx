@@ -10,8 +10,10 @@ import { ValidationPieChart } from '../../components/ValidationPieChart';
 import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { LineStateDistributionChart } from '../../components/LineStateDistributionChart';
 import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
+import { JobLogsModal } from '../../components/JobLogsModal';
 import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
+import { Terminal } from 'lucide-react';
 
 interface NoResponseValidationModuleProps {
   log: (prefix: string, message: string, data?: any) => void;
@@ -22,6 +24,7 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [lastFiles, setLastFiles] = useState<File[]>([]);
@@ -178,8 +181,19 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
                   message={jobStatus.message}
                   status={jobStatus.status}
                 />
+                
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => setShowLogs(true)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-gray-800 transition-all active:scale-95"
+                  >
+                    <Terminal className="w-4 h-4" />
+                    Ver Logs
+                  </button>
+                </div>
+
                 {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
-                  <div className="mt-8 space-y-3">
+                  <div className="mt-4 space-y-3">
                     <DownloadButton 
                       url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
                       filename={`resumen_validacion_${jobStatus.job_id}.csv`} 
@@ -349,6 +363,12 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showLogs && jobStatus && (
+          <JobLogsModal job={jobStatus} onClose={() => setShowLogs(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

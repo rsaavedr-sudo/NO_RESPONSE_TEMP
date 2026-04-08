@@ -9,8 +9,10 @@ import { ErrorAlert } from '../../components/ErrorAlert';
 import { NoResponsePieChart } from '../../components/NoResponsePieChart';
 import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { AnalysisCriteria } from '../../components/AnalysisCriteria';
+import { JobLogsModal } from '../../components/JobLogsModal';
 import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
 import { JobStatus } from '../../types/api';
+import { Terminal } from 'lucide-react';
 
 interface NoResponseModuleProps {
   log: (prefix: string, message: string, data?: any) => void;
@@ -21,6 +23,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleAnalyze = async (files: File[], analysisDays: number, minFrequency: number) => {
@@ -137,14 +140,23 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
                   message={jobStatus.message}
                   status={jobStatus.status}
                 />
-                {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
-                  <div className="mt-8">
+                
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button 
+                    onClick={() => setShowLogs(true)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-gray-800 transition-all active:scale-95"
+                  >
+                    <Terminal className="w-4 h-4" />
+                    Ver Logs
+                  </button>
+                  
+                  {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
                     <DownloadButton 
                       url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
                       filename={`analisis_cdr_${jobStatus.job_id}.csv`} 
                     />
-                  </div>
-                )}
+                  )}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -189,6 +201,12 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
           <AnalysisCriteria stats={jobStatus?.stats} />
         </div>
       </div>
+
+      <AnimatePresence>
+        {showLogs && jobStatus && (
+          <JobLogsModal job={jobStatus} onClose={() => setShowLogs(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

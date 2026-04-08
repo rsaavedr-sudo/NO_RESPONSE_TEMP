@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
+import { AnalysisStats, JobStatus } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 console.log('API_BASE_URL initialized as:', API_BASE_URL);
@@ -10,28 +11,6 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
-export interface AnalysisStats {
-  total_registros: number;
-  total_numeros_unicos: number;
-  numeros_excluidos_200: number;
-  numeros_excluidos_404: number;
-  numeros_con_frecuencia_insuficiente: number;
-  numeros_match: number;
-  numeros_no_match: number;
-  filas_invalidas_descartadas: number;
-}
-
-export interface JobStatus {
-  job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned';
-  progress_percent: number;
-  stage: string;
-  message: string;
-  stats?: AnalysisStats;
-  result_url?: string;
-  error?: string;
-}
 
 export interface DirectoryStats {
   files: number;
@@ -116,6 +95,10 @@ export const getDetailedDownloadUrl = (jobId: string) => {
   return `${API_BASE_URL}/download_detailed/${jobId}`;
 };
 
+export const getLogsDownloadUrl = (jobId: string) => {
+  return `${API_BASE_URL}/jobs/${jobId}/logs/download`;
+};
+
 export const getPreview = async (jobId: string, type: 'summary' | 'detailed' = 'summary', limit: number = 100) => {
   const response = await axios.get(`${API_BASE_URL}/preview/${jobId}`, {
     params: { type, limit }
@@ -153,5 +136,15 @@ export const cleanupResults = async () => {
 
 export const cleanupAll = async () => {
   const response = await axios.post<CleanupResponse>(`${API_BASE_URL}/maintenance/cleanup/all`);
+  return response.data;
+};
+
+export const getHistory = async () => {
+  const response = await axios.get<JobStatus[]>(`${API_BASE_URL}/history`);
+  return response.data;
+};
+
+export const deleteHistoryItem = async (jobId: string) => {
+  const response = await axios.delete(`${API_BASE_URL}/history/${jobId}`);
   return response.data;
 };
