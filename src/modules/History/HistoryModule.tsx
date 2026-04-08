@@ -323,7 +323,7 @@ export const HistoryModule: React.FC = () => {
                     {selectedJob.status === 'completed' && (
                       <>
                         <a 
-                          href={getDetailedDownloadUrl(selectedJob.job_id)}
+                          href={getDownloadUrl(selectedJob.job_id)}
                           className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-95"
                         >
                           <Download className="w-5 h-5" />

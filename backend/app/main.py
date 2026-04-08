@@ -399,9 +399,20 @@ async def stream_job_status(job_id: str):
 async def download_result(job_id: str):
     """
     Downloads the result CSV for a completed job.
-    Alias for download_detailed_result as requested by user.
     """
-    return await download_detailed_result(job_id)
+    job = get_job(job_id)
+    if not job or job["status"] != "completed":
+        raise HTTPException(status_code=404, detail="Result not found or job not completed")
+    
+    path = job.get("result_path")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Result file missing")
+    
+    return FileResponse(
+        path=path,
+        filename=f"analisis_cdr_{job_id}.csv",
+        media_type="text/csv"
+    )
 
 app.include_router(api_router)
 
