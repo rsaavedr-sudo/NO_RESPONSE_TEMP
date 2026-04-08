@@ -138,6 +138,7 @@ async def get_job_status(job_id: str):
             result_url=f"/api/download/{job_id}" if safe_job["status"] == "completed" else None,
             detailed_result_url=f"/api/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
+            processed_records=safe_job.get("processed_records"),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
             created_at=safe_job.get("created_at")
@@ -224,6 +225,7 @@ async def list_history():
             result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
             detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
             error=safe_job.get("error"),
+            processed_records=safe_job.get("processed_records"),
             logs=safe_job.get("logs", []),
             last_update=safe_job.get("last_update") or safe_job.get("created_at"),
             created_at=safe_job.get("created_at")
@@ -371,6 +373,7 @@ async def stream_job_status(job_id: str):
                     "message": safe_job["message"],
                     "stats": stats_dict,
                     "error": safe_job["error"],
+                    "processed_records": safe_job.get("processed_records"),
                     "result_url": f"/api/download/{job_id}" if safe_job["status"] == "completed" else None,
                     "detailed_result_url": f"/api/download_detailed/{job_id}" if safe_job.get("detailed_result_path") else None,
                     "logs": safe_job.get("logs", []),

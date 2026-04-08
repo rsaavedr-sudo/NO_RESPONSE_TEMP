@@ -335,7 +335,7 @@ def check_cancellation(job_id: str):
     if job_id in jobs and jobs[job_id].get("is_cancelled"):
         raise CancellationException("Proceso detenido por el usuario")
 
-def update_job_progress(job_id: str, percent: int, stage: str, message: str):
+def update_job_progress(job_id: str, percent: int, stage: str, message: str, **kwargs):
     if job_id in jobs:
         # Check for cancellation before updating
         if jobs[job_id].get("is_cancelled"):
@@ -344,6 +344,10 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
         now = datetime.now(timezone.utc)
         jobs[job_id]["progress_percent"] = to_json_safe(percent)
         
+        # Store extra info if provided (e.g. processed_records)
+        for key, value in kwargs.items():
+            jobs[job_id][key] = to_json_safe(value)
+            
         # Only add log if stage or message changed significantly, or every 10%
         old_stage = jobs[job_id].get("stage")
         old_message = jobs[job_id].get("message")
@@ -457,8 +461,8 @@ def run_analysis_task(
         output_filename = f"result_{job_id}.csv"
         output_path = os.path.join(RESULTS_DIR, output_filename)
         
-        def progress_callback(percent, stage, message):
-            update_job_progress(job_id, percent, stage, message)
+        def progress_callback(percent, stage, message, **kwargs):
+            update_job_progress(job_id, percent, stage, message, **kwargs)
             
         def check_cancel():
             check_cancellation(job_id)

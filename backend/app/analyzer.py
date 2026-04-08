@@ -167,10 +167,6 @@ def analyze_cdr_chunked(
     try:
         # Pass 1
         for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando archivo: {filename}", processed_records=total_rows)
-            
             for chunk in pd.read_csv(
                 input_path, 
                 sep=';', 
@@ -196,7 +192,7 @@ def analyze_cdr_chunked(
                 # Pass 1 is roughly 30% of the work
                 if progress_callback:
                     # We don't know total rows yet, so we use a heuristic or just show current count
-                    progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando fechas... {total_rows} filas", processed_records=total_rows)
+                    progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
 
         if max_date is None:
             raise ValueError("No se encontraron fechas válidas en los archivos.")
@@ -217,11 +213,6 @@ def analyze_cdr_chunked(
         rows_processed_pass2 = 0
         
         for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                p = 30 + int((rows_processed_pass2 / total_rows) * 60)
-                progress_callback(p, "processing_chunks", f"Procesando archivo: {filename}", processed_records=rows_processed_pass2)
-                
             for chunk in pd.read_csv(
                 input_path, 
                 sep=';', 
@@ -300,13 +291,11 @@ def analyze_cdr_chunked(
                 if progress_callback:
                     # Pass 2 is 30% to 90%
                     p = 30 + int((rows_processed_pass2 / total_rows) * 60)
-                    if rows_processed_pass2 <= chunk_size:
-                        logger.info(f"Primer bloque procesado para job. Filas: {rows_processed_pass2}")
                     progress_callback(p, "processing_chunks", f"Analizando registros... {rows_processed_pass2}/{total_rows}", processed_records=rows_processed_pass2)
 
         # Final Classification and Output Generation
         if progress_callback:
-            progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...", processed_records=rows_processed_pass2)
+            progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...")
 
         results = []
         total_numeros_unicos = len(stats)
@@ -433,14 +422,14 @@ def analyze_cdr_chunked(
         }
 
         if progress_callback:
-            progress_callback(100, "completed", "Análisis completado exitosamente.", processed_records=rows_processed_pass2)
+            progress_callback(100, "completed", "Análisis completado exitosamente.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=total_rows if 'total_rows' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e
 
 def analyze_asr_chunked(
@@ -481,7 +470,7 @@ def analyze_asr_chunked(
                 if max_date is None or (current_max is not None and current_max > max_date):
                     max_date = current_max
                 if progress_callback:
-                    progress_callback(int((total_rows / 40000000) * 20), "scanning_dates", f"Escaneando fechas... {total_rows} filas", processed_records=total_rows)
+                    progress_callback(int((total_rows / 40000000) * 20), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
 
         if max_date is None:
             raise ValueError("No se encontraron fechas válidas en los archivos.")
@@ -513,11 +502,6 @@ def analyze_asr_chunked(
         conversion_errors = []
 
         for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                p = 20 + int((rows_processed / total_rows) * 70)
-                progress_callback(p, "processing_chunks", f"Procesando archivo: {filename}", processed_records=rows_processed)
-                
             # Usecols for ASR
             cols = ['call_date', 'e164', 'sip_code', 'client_code', 'route_code']
             for chunk in pd.read_csv(
@@ -596,7 +580,7 @@ def analyze_asr_chunked(
 
         # Final calculations
         if progress_callback:
-            progress_callback(90, "generating_output", "Generando estadísticas ASR...", processed_records=rows_processed)
+            progress_callback(90, "generating_output", "Generando estadísticas ASR...")
 
         def format_dim(dim_name):
             data = []
@@ -649,14 +633,14 @@ def analyze_asr_chunked(
         pd.DataFrame(all_data).to_csv(output_path, index=False, sep=';')
 
         if progress_callback:
-            progress_callback(100, "completed", "Análisis ASR completado exitosamente.", processed_records=rows_processed)
+            progress_callback(100, "completed", "Análisis ASR completado exitosamente.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in ASR analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e
 
 def analyze_no_response_validation(
@@ -807,8 +791,8 @@ def analyze_no_response_validation(
                     for num in responded:
                         results[num] = True
 
-        if progress_callback:
-            progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas", processed_records=rows_processed)
+                if progress_callback:
+                    progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas", processed_records=rows_processed)
             
             cdr_stats.append({
                 'filename': filename,
@@ -961,12 +945,12 @@ def analyze_no_response_validation(
         pd.DataFrame(results_list).to_csv(output_path, index=False, sep=';')
 
         if progress_callback:
-            progress_callback(100, "completed", "Validación de modelo completada.", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(100, "completed", "Validación de modelo completada.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in validation analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e

@@ -76,6 +76,7 @@ class JobStatus(BaseModel):
     result_url: Optional[str] = None
     detailed_result_url: Optional[str] = None
     error: Optional[str] = None
+    processed_records: Optional[int] = None
     logs: List[JobLog] = []
     last_update: datetime
     created_at: datetime
