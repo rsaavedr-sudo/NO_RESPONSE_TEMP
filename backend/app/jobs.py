@@ -126,7 +126,7 @@ def create_job(analysis_type: str = "no_response") -> str:
     }
     return job_id
 
-def add_job_log(job_id: str, level: str, stage: str, message: str, details: Optional[str] = None):
+def add_job_log(job_id: str, level: str, stage: str, message: str, details: Optional[str] = None, processed_records: Optional[int] = None):
     if job_id in jobs:
         now = datetime.utcnow()
         log_entry = {
@@ -134,25 +134,34 @@ def add_job_log(job_id: str, level: str, stage: str, message: str, details: Opti
             "level": level,
             "stage": stage,
             "message": message,
-            "details": details
+            "details": details,
+            "processed_records": processed_records
         }
         if "logs" not in jobs[job_id]:
             jobs[job_id]["logs"] = []
         jobs[job_id]["logs"].append(log_entry)
         jobs[job_id]["last_update"] = now
         
-        # Limit logs to 1000 entries to prevent memory issues
-        if len(jobs[job_id]["logs"]) > 1000:
-            jobs[job_id]["logs"] = jobs[job_id]["logs"][-1000:]
+        # Limit logs to 5000 entries for persistence, but keep them all if possible
+        # For very large jobs, we might want to stream logs to a file instead.
+        # For now, let's increase the limit.
+        if len(jobs[job_id]["logs"]) > 5000:
+            jobs[job_id]["logs"] = jobs[job_id]["logs"][-5000:]
             
         # Log to system logger as well
         log_msg = f"[{job_id}] [{stage}] {message}"
+        if processed_records is not None:
+            log_msg += f" (Records: {processed_records})"
+            
         if level == "ERROR":
             logger.error(log_msg)
         elif level == "WARNING":
             logger.warning(log_msg)
         else:
             logger.info(log_msg)
+            
+        # Persist every log entry for robustness
+        save_job_metadata(job_id)
 
 def cancel_job(job_id: str):
     if job_id in jobs:
@@ -347,7 +356,7 @@ def check_cancellation(job_id: str):
     if job_id in jobs and jobs[job_id].get("is_cancelled"):
         raise CancellationException("Proceso detenido por el usuario")
 
-def update_job_progress(job_id: str, percent: int, stage: str, message: str):
+def update_job_progress(job_id: str, percent: int, stage: str, message: str, processed_records: Optional[int] = None):
     if job_id in jobs:
         # Check for cancellation before updating
         if jobs[job_id].get("is_cancelled"):
@@ -364,6 +373,8 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
         jobs[job_id]["stage"] = stage
         jobs[job_id]["message"] = message
         jobs[job_id]["last_update"] = now
+        if processed_records is not None:
+            jobs[job_id]["processed_records"] = processed_records
         
         if stage == "completed":
             jobs[job_id]["status"] = "completed"
@@ -376,7 +387,10 @@ def update_job_progress(job_id: str, percent: int, stage: str, message: str):
             
         # Add log for stage transitions or progress milestones
         if old_stage != stage or (percent % 10 == 0 and percent != old_percent):
-            add_job_log(job_id, "INFO", stage, message)
+            add_job_log(job_id, "INFO", stage, message, processed_records=processed_records)
+        else:
+            # Still save metadata even if no log added, to persist progress
+            save_job_metadata(job_id)
 
 def set_job_error(job_id: str, error: str):
     if job_id in jobs:
@@ -458,6 +472,7 @@ def run_analysis_task(
     min_total_frequency: Optional[int] = None,
     min_avg_daily_frequency: Optional[float] = None
 ):
+    import traceback
     try:
         job = jobs.get(job_id)
         analysis_type = job.get("analysis_type", "no_response")
@@ -469,8 +484,8 @@ def run_analysis_task(
         output_filename = f"result_{job_id}.csv"
         output_path = os.path.join(RESULTS_DIR, output_filename)
         
-        def progress_callback(percent, stage, message):
-            update_job_progress(job_id, percent, stage, message)
+        def progress_callback(percent, stage, message, processed_records=None):
+            update_job_progress(job_id, percent, stage, message, processed_records=processed_records)
             
         def check_cancel():
             check_cancellation(job_id)
@@ -521,7 +536,9 @@ def run_analysis_task(
         # Status is already updated by cancel_job, but we ensure it here
         update_job_progress(job_id, 0, "stopped", "Proceso detenido por el usuario")
     except Exception as e:
+        stack_trace = traceback.format_exc()
         logger.exception(f"Error processing job {job_id}")
+        add_job_log(job_id, "ERROR", "failed", f"Excepción completa: {str(e)}", details=stack_trace)
         set_job_error(job_id, str(e))
     finally:
         # Clean up input files

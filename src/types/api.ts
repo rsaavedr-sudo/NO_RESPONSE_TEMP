@@ -73,6 +73,7 @@ export interface JobLog {
   stage: string;
   message: string;
   details?: string;
+  processed_records?: number;
 }
 
 export interface JobStatus {
@@ -89,4 +90,5 @@ export interface JobStatus {
   logs?: JobLog[];
   last_update?: string;
   created_at: string;
+  processed_records?: number;
 }
