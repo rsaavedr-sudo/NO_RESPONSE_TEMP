@@ -166,11 +166,6 @@ export const JobLogsModal: React.FC<JobLogsModalProps> = ({ job, onClose }) => {
                         <span className="text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded">
                           {log.stage.toUpperCase()}
                         </span>
-                        {log.processed_records !== undefined && log.processed_records !== null && (
-                          <span className="text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
-                            {log.processed_records.toLocaleString()} REGISTROS
-                          </span>
-                        )}
                       </div>
                       <p className="text-gray-700 font-medium leading-relaxed break-words">
                         {log.message}

@@ -2,16 +2,7 @@
 import axios from 'axios';
 import { AnalysisStats, JobStatus } from '../types/api';
 
-let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-
-// In preview environment, we want to use relative paths if the configured URL is localhost
-if (typeof window !== 'undefined' && 
-    API_BASE_URL.startsWith('http://localhost') && 
-    window.location.hostname !== 'localhost' && 
-    window.location.hostname !== '127.0.0.1') {
-  API_BASE_URL = '/api';
-}
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 console.log('API_BASE_URL initialized as:', API_BASE_URL);
 
 export const apiClient = axios.create({

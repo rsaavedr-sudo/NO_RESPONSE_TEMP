@@ -19,16 +19,6 @@ async function startServer() {
     createProxyMiddleware({
       target: BACKEND_URL,
       changeOrigin: true,
-      proxyTimeout: 300000, // 5 minutes
-      timeout: 300000,      // 5 minutes
-      on: {
-        proxyReq: (proxyReq, req, res) => {
-          console.log(`[Proxy] ${req.method} ${req.url}`);
-        },
-        error: (err, req, res) => {
-          console.error(`[Proxy Error] ${err.message}`);
-        }
-      }
     })
   );
 
