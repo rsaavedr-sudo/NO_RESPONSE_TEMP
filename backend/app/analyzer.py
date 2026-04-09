@@ -2,7 +2,8 @@ import pandas as pd
 import os
 from datetime import timedelta
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from .database import is_file_processed, register_processed_file, save_daily_stats, get_historical_stats, get_file_hash
 
 logger = logging.getLogger(__name__)
 
@@ -147,126 +148,180 @@ def analyze_cdr_chunked(
     min_frequency: int,
     chunk_size: int = 500000,
     progress_callback = None,
-    check_cancellation = None
+    check_cancellation = None,
+    use_history: bool = True,
+    history_days: int = 30,
+    input_filenames: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Analyzes multiple CDR CSV files in chunks to handle large files.
+    Supports incremental analysis and deduplication.
     """
     
-    # Pass 1: Find max_date and basic stats across all files
+    # Pass 0: Deduplication
     if progress_callback:
-        progress_callback(0, "scanning_dates", "Escaneando fechas y validando archivos...")
+        progress_callback(0, "deduplication", "Verificando archivos ya procesados...")
+    
+    valid_input_paths = []
+    skipped_filenames = []
+    
+    for i, path in enumerate(input_paths):
+        filename = input_filenames[i] if input_filenames and i < len(input_filenames) else os.path.basename(path)
+        if is_file_processed(filename, path):
+            logger.info(f"Skipping already processed file: {filename}")
+            skipped_filenames.append(filename)
+        else:
+            valid_input_paths.append((path, filename))
+            
+    # Pass 1: Find max_date across ALL files (even skipped ones to know the current window)
+    # Actually, if we skip files, we might not want to scan them again. 
+    # But we need to know the max_date of the "current batch" or "current state".
+    # Let's scan only valid files for max_date, and if none, we'll use DB max date later.
+    
+    if progress_callback:
+        progress_callback(5, "scanning_dates", "Escaneando fechas y validando archivos...")
     
     max_date = None
     total_rows = 0
     invalid_rows = 0
     
-    # We need to know the total size for progress
-    total_file_size = sum(os.path.getsize(path) for path in input_paths)
-    
-    try:
-        # Pass 1
-        for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando archivo: {filename}", processed_records=total_rows)
+    # Pass 1
+    for input_path, filename in valid_input_paths:
+        for chunk in pd.read_csv(
+            input_path, 
+            sep=';', 
+            usecols=['call_date'], 
+            chunksize=chunk_size,
+            on_bad_lines='warn',
+            engine='c'
+        ):
+            if check_cancellation:
+                check_cancellation()
+                
+            total_rows += len(chunk)
+            chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
             
-            for chunk in pd.read_csv(
-                input_path, 
-                sep=';', 
-                usecols=['call_date'], 
-                chunksize=chunk_size,
-                on_bad_lines='warn',
-                engine='c'
-            ):
-                if check_cancellation:
-                    check_cancellation()
-                    
-                total_rows += len(chunk)
-                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-                
-                chunk_invalid = chunk['call_date'].isna().sum()
-                invalid_rows += chunk_invalid
-                
-                current_max = chunk['call_date'].max()
-                if max_date is None or (current_max is not None and current_max > max_date):
-                    max_date = current_max
-                
-                # Update progress (approximate based on rows for pass 1)
-                # Pass 1 is roughly 30% of the work
-                if progress_callback:
-                    # We don't know total rows yet, so we use a heuristic or just show current count
-                    progress_callback(int((total_rows / 40000000) * 30), "scanning_dates", f"Escaneando fechas... {total_rows} filas", processed_records=total_rows)
+            chunk_invalid = chunk['call_date'].isna().sum()
+            invalid_rows += chunk_invalid
+            
+            current_max = chunk['call_date'].max()
+            if max_date is None or (current_max is not None and current_max > max_date):
+                max_date = current_max
+            
+            if progress_callback:
+                progress_callback(5 + int((total_rows / 20000000) * 15), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
 
-        if max_date is None:
+    # If no new files, we might still want to run analysis on history
+    if max_date is None and use_history:
+        # Try to get max date from DB
+        from .database import get_connection
+        conn = get_connection()
+        res = conn.execute("SELECT MAX(date) FROM daily_stats").fetchone()
+        conn.close()
+        if res and res[0]:
+            max_date = pd.to_datetime(res[0])
+            logger.info(f"Using max date from database: {max_date}")
+
+    if max_date is None:
+        if skipped_filenames:
+            raise ValueError("Todos los archivos ya fueron procesados y no hay datos nuevos para analizar.")
+        else:
             raise ValueError("No se encontraron fechas válidas en los archivos.")
 
-        start_date = max_date - timedelta(days=analysis_days)
-        logger.info(f"Max date: {max_date}, Start date: {start_date}")
+    start_date = max_date - timedelta(days=analysis_days)
+    history_start_date = max_date - timedelta(days=history_days)
+    
+    logger.info(f"Max date: {max_date}, Start date: {start_date}, History start: {history_start_date}")
 
-        # Pass 2: Aggregate metrics
-        if progress_callback:
-            progress_callback(30, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
+    # Pass 2: Aggregate metrics
+    if progress_callback:
+        progress_callback(20, "processing_chunks", f"Procesando bloques (Ventana: {start_date.date()} a {max_date.date()})...")
 
-        # We'll use a dictionary to accumulate stats per e164
-        # e164 -> {total, sip_counts, first_date, last_date, days, total_secs}
-        stats = {}
-        all_sip_codes = set()
-        conversion_errors = []
+    # stats: e164 -> {total, sip_counts, first_date, last_date, days, total_secs}
+    stats = {}
+    all_sip_codes = set()
+    conversion_errors = []
+    
+    rows_processed_pass2 = 0
+    days_considered = set()
+    
+    for input_path, filename in valid_input_paths:
+        file_start_date = None
+        file_end_date = None
         
-        rows_processed_pass2 = 0
+        # We'll also collect daily stats for the DB
+        # (e164, date) -> {total_intentos, total_200ok, ...}
+        file_daily_stats = {}
         
-        for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                p = 30 + int((rows_processed_pass2 / total_rows) * 60)
-                progress_callback(p, "processing_chunks", f"Procesando archivo: {filename}", processed_records=rows_processed_pass2)
+        for chunk in pd.read_csv(
+            input_path, 
+            sep=';', 
+            usecols=['call_date', 'e164', 'sip_code', 'tot_secs'], 
+            dtype={'e164': str},
+            chunksize=chunk_size,
+            engine='c'
+        ):
+            if check_cancellation:
+                check_cancellation()
                 
-            for chunk in pd.read_csv(
-                input_path, 
-                sep=';', 
-                usecols=['call_date', 'e164', 'sip_code', 'tot_secs'], 
-                dtype={'e164': str}, # Read numeric as object/str initially
-                chunksize=chunk_size,
-                engine='c'
-            ):
-                if check_cancellation:
-                    check_cancellation()
-                    
-                rows_processed_pass2 += len(chunk)
+            rows_processed_pass2 += len(chunk)
+            
+            chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
+            chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path, conversion_errors)
+            chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', input_path, conversion_errors)
+            
+            chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
+            if chunk.empty: continue
+            
+            chunk['sip_code'] = chunk['sip_code'].astype(int)
+            chunk['date_only'] = chunk['call_date'].dt.date
+            
+            # Update file date range
+            c_min = chunk['call_date'].min()
+            c_max = chunk['call_date'].max()
+            if file_start_date is None or c_min < file_start_date: file_start_date = c_min
+            if file_end_date is None or c_max > file_end_date: file_end_date = c_max
+            
+            # --- Incremental DB Aggregation ---
+            # Group by e164 and date for DB
+            db_agg = chunk.groupby(['e164', 'date_only']).agg(
+                total_intentos=('sip_code', 'count'),
+                total_200ok=('sip_code', lambda x: (x == 200).sum()),
+                total_404=('sip_code', lambda x: (x == 404).sum()),
+                total_480=('sip_code', lambda x: (x == 480).sum()),
+                total_487=('sip_code', lambda x: (x == 487).sum()),
+                total_503=('sip_code', lambda x: (x == 503).sum()),
+                total_secs=('tot_secs', 'sum'),
+                max_secs=('tot_secs', 'max'),
+                min_secs=('tot_secs', 'min')
+            )
+            
+            for (e164, d_only), row in db_agg.iterrows():
+                key = (e164, str(d_only))
+                if key not in file_daily_stats:
+                    file_daily_stats[key] = row.to_dict()
+                    file_daily_stats[key]['otros_sip_codes'] = row['total_intentos'] - (row['total_200ok'] + row['total_404'] + row['total_480'] + row['total_487'] + row['total_503'])
+                else:
+                    s = file_daily_stats[key]
+                    s['total_intentos'] += row['total_intentos']
+                    s['total_200ok'] += row['total_200ok']
+                    s['total_404'] += row['total_404']
+                    s['total_480'] += row['total_480']
+                    s['total_487'] += row['total_487']
+                    s['total_503'] += row['total_503']
+                    s['total_secs'] += row['total_secs']
+                    s['max_secs'] = max(s['max_secs'], row['max_secs'])
+                    s['min_secs'] = min(s['min_secs'], row['min_secs'])
+                    s['otros_sip_codes'] += row['total_intentos'] - (row['total_200ok'] + row['total_404'] + row['total_480'] + row['total_487'] + row['total_503'])
+
+            # --- Current Analysis Aggregation (only if in window) ---
+            chunk_in_window = chunk[chunk['call_date'] >= start_date]
+            if not chunk_in_window.empty:
+                days_considered.update(chunk_in_window['date_only'].unique())
+                all_sip_codes.update(chunk_in_window['sip_code'].unique())
                 
-                # Basic cleaning
-                chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
-                
-                # Robust numeric conversion
-                chunk['sip_code'] = safe_to_float(chunk['sip_code'], 'sip_code', input_path, conversion_errors)
-                chunk['tot_secs'] = safe_to_float(chunk['tot_secs'], 'tot_secs', input_path, conversion_errors)
-                
-                chunk = chunk.dropna(subset=['call_date', 'e164', 'sip_code', 'tot_secs'])
-                
-                if chunk.empty:
-                    continue
-                
-                # Ensure sip_code is integer for consistent keys
-                chunk['sip_code'] = chunk['sip_code'].astype(int)
-                
-                # Filter by window
-                chunk = chunk[chunk['call_date'] >= start_date]
-                
-                if chunk.empty:
-                    continue
-                
-                # Track unique sip codes
-                all_sip_codes.update(chunk['sip_code'].unique())
-                
-                # Date only for daily frequency calculation
-                chunk['date_only'] = chunk['call_date'].dt.date
-                    
-                # Group by e164 and sip_code for counts
-                sip_counts_chunk = chunk.groupby(['e164', 'sip_code']).size()
-                
-                # Group by e164 for basic metrics
-                basic_stats_chunk = chunk.groupby('e164').agg(
+                sip_counts_chunk = chunk_in_window.groupby(['e164', 'sip_code']).size()
+                basic_stats_chunk = chunk_in_window.groupby('e164').agg(
                     total=('sip_code', 'count'),
                     min_dt=('call_date', 'min'),
                     max_dt=('call_date', 'max'),
@@ -274,39 +329,76 @@ def analyze_cdr_chunked(
                     sum_secs=('tot_secs', 'sum')
                 )
                 
-                # Merge with global stats
                 for (e164, sip_code), count in sip_counts_chunk.items():
                     if e164 not in stats:
-                        stats[e164] = {
-                            'total': 0, 
-                            'sip_counts': {},
-                            'first_date': None, 
-                            'last_date': None,
-                            'days': set(),
-                            'total_secs': 0
-                        }
+                        stats[e164] = {'total': 0, 'sip_counts': {}, 'first_date': None, 'last_date': None, 'days': set(), 'total_secs': 0}
                     stats[e164]['sip_counts'][sip_code] = stats[e164]['sip_counts'].get(sip_code, 0) + count
                 
                 for e164, row in basic_stats_chunk.iterrows():
                     s = stats[e164]
                     s['total'] += row['total']
                     s['total_secs'] += row['sum_secs']
-                    if s['first_date'] is None or row['min_dt'] < s['first_date']:
-                        s['first_date'] = row['min_dt']
-                    if s['last_date'] is None or row['max_dt'] > s['last_date']:
-                        s['last_date'] = row['max_dt']
+                    if s['first_date'] is None or row['min_dt'] < s['first_date']: s['first_date'] = row['min_dt']
+                    if s['last_date'] is None or row['max_dt'] > s['last_date']: s['last_date'] = row['max_dt']
                     s['days'].update(row['unique_days'])
-                
-                if progress_callback:
-                    # Pass 2 is 30% to 90%
-                    p = 30 + int((rows_processed_pass2 / total_rows) * 60)
-                    if rows_processed_pass2 <= chunk_size:
-                        logger.info(f"Primer bloque procesado para job. Filas: {rows_processed_pass2}")
-                    progress_callback(p, "processing_chunks", f"Analizando registros... {rows_processed_pass2}/{total_rows}", processed_records=rows_processed_pass2)
+            
+            if progress_callback:
+                p = 20 + int((rows_processed_pass2 / total_rows) * 50)
+                progress_callback(p, "processing_chunks", f"Analizando registros... {rows_processed_pass2}/{total_rows}", processed_records=rows_processed_pass2)
 
-        # Final Classification and Output Generation
+        # Save file daily stats to DB
+        if file_daily_stats:
+            db_df = pd.DataFrame([{'e164': k[0], 'date': k[1], **v} for k, v in file_daily_stats.items()])
+            save_daily_stats(db_df)
+            
+        # Register file as processed
+        f_hash = get_file_hash(input_path)
+        register_processed_file(filename, f_hash, str(file_start_date.date()) if file_start_date else None, str(file_end_date.date()) if file_end_date else None)
+
+    # --- Merge with History ---
+    if use_history:
         if progress_callback:
-            progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...", processed_records=rows_processed_pass2)
+            progress_callback(75, "loading_history", "Combinando con datos históricos...")
+            
+        # Use history_days window
+        hist_df = get_historical_stats(str(history_start_date.date()), str(max_date.date()))
+        
+        if not hist_df.empty:
+            for _, row in hist_df.iterrows():
+                e164 = row['e164']
+                if e164 not in stats:
+                    stats[e164] = {'total': 0, 'sip_counts': {}, 'first_date': None, 'last_date': None, 'days': set(), 'total_secs': 0}
+                
+                s = stats[e164]
+                # We need to be careful not to double count if the current batch already included some of these days
+                # But the deduplication logic (is_file_processed) should prevent this if we only process new files.
+                # If the user uploads a file that overlaps with existing days in DB, 
+                # we currently ADD them (as per save_daily_stats ON CONFLICT DO UPDATE SET total = total + excluded.total).
+                # This might be a bit loose but matches the "avoid duplicating cases already considered if the file is the SAME" requirement.
+                
+                # For the final classification, we merge the counts
+                s['total'] += int(row['total_intentos'])
+                s['total_secs'] += float(row['total_secs'])
+                # We don't have full SIP breakdown in DB for all codes, but we have the main ones
+                for code in [200, 404, 480, 487, 503]:
+                    col = f'total_{code}'
+                    if row[col] > 0:
+                        s['sip_counts'][code] = s['sip_counts'].get(code, 0) + int(row[col])
+                        all_sip_codes.add(code)
+                
+                # 'otros_sip_codes'
+                if row['otros_sip_codes'] > 0:
+                    # We'll use a dummy code 999 for "others" if needed, or just ignore for classification
+                    s['sip_counts'][999] = s['sip_counts'].get(999, 0) + int(row['otros_sip_codes'])
+                
+                # Update days count
+                # Note: 'dias_con_actividad' is a count, but 'days' is a set. 
+                # This is a bit inconsistent but we'll use 'dias_con_actividad' for classification if available.
+                s['historical_days_count'] = int(row['dias_con_actividad'])
+
+    # Final Classification and Output Generation
+    if progress_callback:
+        progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...")
 
         results = []
         total_numeros_unicos = len(stats)
@@ -429,18 +521,20 @@ def analyze_cdr_chunked(
             'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
             'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
-            'conversion_errors': conversion_errors[:10] # Show first 10 errors
+            'conversion_errors': conversion_errors[:10], # Show first 10 errors
+            'files_skipped': skipped_filenames,
+            'days_considered': [str(d) for d in sorted(list(days_considered))]
         }
 
         if progress_callback:
-            progress_callback(100, "completed", "Análisis completado exitosamente.", processed_records=rows_processed_pass2)
+            progress_callback(100, "completed", "Análisis completado exitosamente.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=total_rows if 'total_rows' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e
 
 def analyze_asr_chunked(
@@ -481,7 +575,7 @@ def analyze_asr_chunked(
                 if max_date is None or (current_max is not None and current_max > max_date):
                     max_date = current_max
                 if progress_callback:
-                    progress_callback(int((total_rows / 40000000) * 20), "scanning_dates", f"Escaneando fechas... {total_rows} filas", processed_records=total_rows)
+                    progress_callback(int((total_rows / 40000000) * 20), "scanning_dates", f"Escaneando fechas... {total_rows} filas")
 
         if max_date is None:
             raise ValueError("No se encontraron fechas válidas en los archivos.")
@@ -513,11 +607,6 @@ def analyze_asr_chunked(
         conversion_errors = []
 
         for input_path in input_paths:
-            filename = os.path.basename(input_path)
-            if progress_callback:
-                p = 20 + int((rows_processed / total_rows) * 70)
-                progress_callback(p, "processing_chunks", f"Procesando archivo: {filename}", processed_records=rows_processed)
-                
             # Usecols for ASR
             cols = ['call_date', 'e164', 'sip_code', 'client_code', 'route_code']
             for chunk in pd.read_csv(
@@ -596,7 +685,7 @@ def analyze_asr_chunked(
 
         # Final calculations
         if progress_callback:
-            progress_callback(90, "generating_output", "Generando estadísticas ASR...", processed_records=rows_processed)
+            progress_callback(90, "generating_output", "Generando estadísticas ASR...")
 
         def format_dim(dim_name):
             data = []
@@ -649,14 +738,14 @@ def analyze_asr_chunked(
         pd.DataFrame(all_data).to_csv(output_path, index=False, sep=';')
 
         if progress_callback:
-            progress_callback(100, "completed", "Análisis ASR completado exitosamente.", processed_records=rows_processed)
+            progress_callback(100, "completed", "Análisis ASR completado exitosamente.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in ASR analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e
 
 def analyze_no_response_validation(
@@ -807,8 +896,8 @@ def analyze_no_response_validation(
                     for num in responded:
                         results[num] = True
 
-        if progress_callback:
-            progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas", processed_records=rows_processed)
+                if progress_callback:
+                    progress_callback(20 + int((rows_processed / 10000000) * 70), "processing_cdr", f"Escaneando CDR... {rows_processed} filas", processed_records=rows_processed)
             
             cdr_stats.append({
                 'filename': filename,
@@ -961,12 +1050,12 @@ def analyze_no_response_validation(
         pd.DataFrame(results_list).to_csv(output_path, index=False, sep=';')
 
         if progress_callback:
-            progress_callback(100, "completed", "Validación de modelo completada.", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(100, "completed", "Validación de modelo completada.")
 
         return summary
 
     except Exception as e:
         logger.error(f"Error in validation analyzer: {str(e)}")
         if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}", processed_records=rows_processed if 'rows_processed' in locals() else 0)
+            progress_callback(0, "failed", f"Error: {str(e)}")
         raise e

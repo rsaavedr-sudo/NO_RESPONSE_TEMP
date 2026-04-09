@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileSpreadsheet, BarChart3 } from 'lucide-react';
+import { FileSpreadsheet, BarChart3, Settings } from 'lucide-react';
 import { UploadForm } from '../../components/UploadForm';
 import { ProgressBar } from '../../components/ProgressBar';
 import { StatsPanel } from '../../components/StatsPanel';
@@ -10,7 +10,7 @@ import { NoResponsePieChart } from '../../components/NoResponsePieChart';
 import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { AnalysisCriteria } from '../../components/AnalysisCriteria';
 import { JobLogsModal } from '../../components/JobLogsModal';
-import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis, getLastJobStatus } from '../../api/client';
 import { JobStatus } from '../../types/api';
 import { Terminal } from 'lucide-react';
 
@@ -26,9 +26,17 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   const [showLogs, setShowLogs] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleAnalyze = async (files: File[], analysisDays: number, minFrequency: number) => {
+  const handleAnalyze = async (
+    files: File[], 
+    analysisDays: number, 
+    minFrequency: number,
+    minTotalFrequency?: number,
+    minAvgDailyFrequency?: number,
+    useHistory: boolean = true,
+    historyDays: number = 30
+  ) => {
     const totalSize = files.reduce((acc, f) => acc + f.size, 0);
-    log('no_response', 'iniciado', { files: files.length, totalSize });
+    log('no_response', 'iniciado', { files: files.length, totalSize, useHistory, historyDays });
     setLastEndpoint(`POST /api/analyze`);
     
     setError(null);
@@ -39,11 +47,22 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
       analysis_type: 'no_response',
       progress_percent: 0,
       stage: 'uploading',
-      message: 'Subiendo archivos al servidor...'
+      message: 'Subiendo archivos al servidor...',
+      use_history: useHistory,
+      history_days: historyDays
     });
 
     try {
-      const { job_id } = await startAnalysis(files, analysisDays, minFrequency, 'no_response');
+      const { job_id } = await startAnalysis(
+        files, 
+        analysisDays, 
+        minFrequency, 
+        'no_response',
+        undefined,
+        undefined,
+        useHistory,
+        historyDays
+      );
       log('no_response', 'job_id recibido', job_id);
       setActiveJobId(job_id);
       startPolling(job_id);
@@ -88,6 +107,20 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
   };
 
   useEffect(() => {
+    const fetchLastJob = async () => {
+      try {
+        const lastJob = await getLastJobStatus('no_response');
+        if (lastJob) {
+          setJobStatus(lastJob);
+          setActiveJobId(lastJob.job_id);
+          log('no_response', 'último análisis restaurado', lastJob.job_id);
+        }
+      } catch (err) {
+        // No last job found, ignore
+      }
+    };
+    fetchLastJob();
+
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
@@ -123,6 +156,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
               onAnalyze={handleAnalyze} 
               onCancel={handleCancel}
               disabled={jobStatus?.status === 'processing' || jobStatus?.status === 'queued'} 
+              showIncrementalOptions={true}
             />
           </div>
 
@@ -184,16 +218,53 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
 
           <AnimatePresence>
             {jobStatus?.status === 'completed' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <NoResponsePieChart 
-                  conNoResponse={jobStatus.stats?.numeros_con_no_response || 0} 
-                  sinNoResponse={jobStatus.stats?.numeros_sin_no_response || 0} 
-                />
-                <LineStatePieChart 
-                  inactiva={jobStatus.stats?.inactiva_count || 0}
-                  indeterminada={jobStatus.stats?.indeterminada_count || 0}
-                  activa={jobStatus.stats?.activa_count || 0}
-                />
+              <div className="space-y-8">
+                {(jobStatus.files_skipped?.length > 0 || jobStatus.days_considered?.length > 0) && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex flex-col gap-3"
+                  >
+                    <div className="flex items-center gap-2 text-blue-800 font-bold text-xs uppercase tracking-wider">
+                      <Settings className="w-4 h-4" />
+                      Detalles del Análisis Incremental
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {jobStatus.files_skipped?.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-blue-600 uppercase">Archivos Omitidos (Deduplicados)</p>
+                          <ul className="text-[10px] text-blue-800 list-disc list-inside max-h-20 overflow-y-auto">
+                            {jobStatus.files_skipped.map((f, i) => <li key={i}>{f}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {jobStatus.days_considered?.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-blue-600 uppercase">Días Considerados</p>
+                          <div className="flex flex-wrap gap-1">
+                            {jobStatus.days_considered.map((d, i) => (
+                              <span key={i} className="px-1.5 py-0.5 bg-blue-200 text-blue-800 rounded text-[9px] font-medium">
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <NoResponsePieChart 
+                    conNoResponse={jobStatus.stats?.numeros_con_no_response || 0} 
+                    sinNoResponse={jobStatus.stats?.numeros_sin_no_response || 0} 
+                  />
+                  <LineStatePieChart 
+                    inactiva={jobStatus.stats?.inactiva_count || 0}
+                    indeterminada={jobStatus.stats?.indeterminada_count || 0}
+                    activa={jobStatus.stats?.activa_count || 0}
+                  />
+                </div>
               </div>
             )}
           </AnimatePresence>

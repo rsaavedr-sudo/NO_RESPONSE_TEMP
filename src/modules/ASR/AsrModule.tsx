@@ -10,7 +10,7 @@ import { ASRCriteria } from '../../components/ASRCriteria';
 import { ASRStatsPanel } from '../../components/ASRStatsPanel';
 import { ASRDimensionCharts } from '../../components/ASRDimensionCharts';
 import { JobLogsModal } from '../../components/JobLogsModal';
-import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { startAnalysis, getDownloadUrl, getJobStatus, cancelAnalysis, getLastJobStatus } from '../../api/client';
 import { JobStatus } from '../../types/api';
 import { Terminal } from 'lucide-react';
 
@@ -88,6 +88,20 @@ export const ASRModule: React.FC<ASRModuleProps> = ({ log, setLastEndpoint }) =>
   };
 
   useEffect(() => {
+    const fetchLastJob = async () => {
+      try {
+        const lastJob = await getLastJobStatus('asr');
+        if (lastJob) {
+          setJobStatus(lastJob);
+          setActiveJobId(lastJob.job_id);
+          log('asr', 'último análisis restaurado', lastJob.job_id);
+        }
+      } catch (err) {
+        // No last job found, ignore
+      }
+    };
+    fetchLastJob();
+
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };

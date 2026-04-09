@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { AnalysisStats, JobStatus } from '../types/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 console.log('API_BASE_URL initialized as:', API_BASE_URL);
 
 export const apiClient = axios.create({
@@ -51,7 +51,9 @@ export const startAnalysis = async (
   minFrequency: number, 
   analysisType: string = 'no_response',
   minTotalFrequency?: number,
-  minAvgDailyFrequency?: number
+  minAvgDailyFrequency?: number,
+  useHistory: boolean = true,
+  historyDays: number = 30
 ) => {
   const formData = new FormData();
   files.forEach(file => {
@@ -60,6 +62,8 @@ export const startAnalysis = async (
   formData.append('analysis_days', analysisDays.toString());
   formData.append('min_frequency', minFrequency.toString());
   formData.append('analysis_type', analysisType);
+  formData.append('use_history', useHistory.toString());
+  formData.append('history_days', historyDays.toString());
   
   if (minTotalFrequency !== undefined) {
     formData.append('min_total_frequency', minTotalFrequency.toString());
@@ -80,6 +84,11 @@ export const cancelAnalysis = async (jobId: string) => {
 
 export const getJobStatus = async (jobId: string) => {
   const response = await axios.get<JobStatus>(`${API_BASE_URL}/jobs/${jobId}`);
+  return response.data;
+};
+
+export const getLastJobStatus = async (analysisType: string) => {
+  const response = await axios.get<JobStatus>(`${API_BASE_URL}/jobs/last/${analysisType}`);
   return response.data;
 };
 

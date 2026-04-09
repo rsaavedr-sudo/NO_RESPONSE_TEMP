@@ -11,7 +11,7 @@ import { LineStatePieChart } from '../../components/LineStatePieChart';
 import { LineStateDistributionChart } from '../../components/LineStateDistributionChart';
 import { MatchedRecordsTable } from '../../components/MatchedRecordsTable';
 import { JobLogsModal } from '../../components/JobLogsModal';
-import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis } from '../../api/client';
+import { startAnalysis, getDownloadUrl, getDetailedDownloadUrl, getJobStatus, cancelAnalysis, getLastJobStatus } from '../../api/client';
 import { JobStatus } from '../../types/api';
 import { Terminal } from 'lucide-react';
 
@@ -38,7 +38,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
     analysisDays: number, 
     minFrequency: number,
     minTotalFrequency?: number,
-    minAvgDailyFrequency?: number
+    minAvgDailyFrequency?: number,
+    useHistory: boolean = false,
+    historyDays: number = 30
   ) => {
     setLastFiles(files);
     setLastAnalysisDays(analysisDays);
@@ -58,7 +60,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
       analysis_type: 'no_response_validation',
       progress_percent: 0,
       stage: 'uploading',
-      message: 'Subiendo archivos al servidor...'
+      message: 'Subiendo archivos al servidor...',
+      use_history: useHistory,
+      history_days: historyDays
     });
 
     try {
@@ -69,7 +73,9 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
         minFrequency, 
         'no_response_validation',
         minTotalFrequency,
-        minAvgDailyFrequency
+        minAvgDailyFrequency,
+        useHistory,
+        historyDays
       );
       log('validation', 'job_id recibido', job_id);
       setActiveJobId(job_id);
@@ -127,6 +133,20 @@ export const NoResponseValidationModule: React.FC<NoResponseValidationModuleProp
   };
 
   useEffect(() => {
+    const fetchLastJob = async () => {
+      try {
+        const lastJob = await getLastJobStatus('no_response_validation');
+        if (lastJob) {
+          setJobStatus(lastJob);
+          setActiveJobId(lastJob.job_id);
+          log('validation', 'último análisis restaurado', lastJob.job_id);
+        }
+      } catch (err) {
+        // No last job found, ignore
+      }
+    };
+    fetchLastJob();
+
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };

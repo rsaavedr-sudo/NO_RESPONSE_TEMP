@@ -6,12 +6,17 @@ interface UploadFormProps {
   onAnalyze: (
     files: File[], 
     analysisDays: number, 
-    minFrequency: number
+    minFrequency: number,
+    minTotalFrequency?: number,
+    minAvgDailyFrequency?: number,
+    useHistory?: boolean,
+    historyDays?: number
   ) => void;
   onCancel?: () => void;
   disabled?: boolean;
   hideMinFrequency?: boolean;
   isValidationMode?: boolean;
+  showIncrementalOptions?: boolean;
 }
 
 export const UploadForm: React.FC<UploadFormProps> = ({ 
@@ -19,7 +24,8 @@ export const UploadForm: React.FC<UploadFormProps> = ({
   onCancel, 
   disabled, 
   hideMinFrequency,
-  isValidationMode 
+  isValidationMode,
+  showIncrementalOptions
 }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [targetFile, setTargetFile] = useState<File | null>(null);
@@ -27,6 +33,8 @@ export const UploadForm: React.FC<UploadFormProps> = ({
   const [minFrequency, setMinFrequency] = useState(5);
   const [minTotalFrequency, setMinTotalFrequency] = useState(30);
   const [minAvgDailyFrequency, setMinAvgDailyFrequency] = useState(5);
+  const [useHistory, setUseHistory] = useState(true);
+  const [historyDays, setHistoryDays] = useState(30);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetInputRef = useRef<HTMLInputElement>(null);
@@ -81,7 +89,15 @@ export const UploadForm: React.FC<UploadFormProps> = ({
         );
       }
     } else if (files.length > 0) {
-      onAnalyze(files, analysisDays, minFrequency);
+      onAnalyze(
+        files, 
+        analysisDays, 
+        minFrequency, 
+        undefined, 
+        undefined, 
+        useHistory, 
+        historyDays
+      );
     }
   };
 
@@ -295,6 +311,61 @@ export const UploadForm: React.FC<UploadFormProps> = ({
             </div>
           )}
         </div>
+
+      {showIncrementalOptions && (
+        <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider">Análisis Incremental</h3>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={useHistory} 
+                onChange={(e) => setUseHistory(e.target.checked)}
+                className="sr-only peer"
+                disabled={disabled}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="ml-3 text-sm font-medium text-blue-900">Usar Histórico</span>
+            </label>
+          </div>
+
+          <AnimatePresence>
+            {useHistory && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-3"
+              >
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <Calendar className="w-4 h-4 text-blue-500" />
+                  Días de Histórico (Lookback)
+                </label>
+                <input
+                  type="number"
+                  value={historyDays}
+                  onChange={(e) => setHistoryDays(parseInt(e.target.value) || 1)}
+                  min="1"
+                  max="365"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all bg-white"
+                  disabled={disabled}
+                />
+                <p className="text-xs text-gray-500">Ventana de datos históricos a considerar (ej: últimos 30 días).</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          <div className="flex items-start gap-2 p-3 bg-blue-100/50 rounded-lg">
+            <Activity className="w-4 h-4 text-blue-600 mt-0.5" />
+            <p className="text-[10px] text-blue-800 leading-relaxed">
+              El sistema detectará automáticamente archivos ya procesados para evitar duplicaciones y usará los datos agregados existentes.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-4">
         <button
