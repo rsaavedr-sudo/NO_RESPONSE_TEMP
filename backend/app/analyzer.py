@@ -377,24 +377,33 @@ def analyze_cdr_chunked(
                 # This might be a bit loose but matches the "avoid duplicating cases already considered if the file is the SAME" requirement.
                 
                 # For the final classification, we merge the counts
-                s['total'] += int(row['total_intentos'])
-                s['total_secs'] += float(row['total_secs'])
-                # We don't have full SIP breakdown in DB for all codes, but we have the main ones
-                for code in [200, 404, 480, 487, 503]:
-                    col = f'total_{code}'
-                    if row[col] > 0:
-                        s['sip_counts'][code] = s['sip_counts'].get(code, 0) + int(row[col])
-                        all_sip_codes.add(code)
+                # The history data now comes as raw rows (one per attempt)
+                try:
+                    sip_val = row.get('sip_code', 0)
+                    sip = int(float(sip_val)) if pd.notna(sip_val) else 0
+                except (ValueError, TypeError):
+                    sip = 0
+
+                if sip in [200, 404, 480, 487, 503]:
+                    s['sip_counts'][sip] = s['sip_counts'].get(sip, 0) + 1
+                    all_sip_codes.add(sip)
+                elif sip > 0:
+                    s['sip_counts'][999] = s['sip_counts'].get(999, 0) + 1
                 
-                # 'otros_sip_codes'
-                if row['otros_sip_codes'] > 0:
-                    # We'll use a dummy code 999 for "others" if needed, or just ignore for classification
-                    s['sip_counts'][999] = s['sip_counts'].get(999, 0) + int(row['otros_sip_codes'])
+                s['total'] += 1
+                s['total_secs'] += float(row.get('tot_secs', 0) or 0)
                 
-                # Update days count
-                # Note: 'dias_con_actividad' is a count, but 'days' is a set. 
-                # This is a bit inconsistent but we'll use 'dias_con_actividad' for classification if available.
-                s['historical_days_count'] = int(row['dias_con_actividad'])
+                # Update days if available
+                hist_date = row.get('date') or row.get('call_date')
+                if hist_date:
+                    try:
+                        s['days'].add(pd.to_datetime(hist_date).date())
+                    except:
+                        pass
+                
+                # Maintain historical_days_count if it exists in the row
+                if 'dias_con_actividad' in row:
+                    s['historical_days_count'] = int(row['dias_con_actividad'])
 
     # Final Classification and Output Generation
     if progress_callback:
