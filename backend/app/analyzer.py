@@ -400,142 +400,136 @@ def analyze_cdr_chunked(
     if progress_callback:
         progress_callback(90, "generating_output", "Generando archivo de resultados y estadísticas...")
 
-        results = []
-        total_numeros_unicos = len(stats)
-        numeros_excluidos_200 = 0
-        numeros_excluidos_404 = 0
-        numeros_con_frecuencia_insuficiente = 0
-        numeros_match = 0
-        numeros_no_match = 0
-        numeros_con_no_response = 0
-        numeros_sin_no_response = 0
-        global_first_date = None
-        global_last_date = None
+    results = []
+    total_numeros_unicos = len(stats)
+    numeros_excluidos_200 = 0
+    numeros_excluidos_404 = 0
+    numeros_con_frecuencia_insuficiente = 0
+    numeros_match = 0
+    numeros_no_match = 0
+    numeros_con_no_response = 0
+    numeros_sin_no_response = 0
+    global_first_date = None
+    global_last_date = None
 
-        # LineState counters
-        inactiva_count = 0
-        indeterminada_count = 0
-        activa_count = 0
+    # LineState counters
+    inactiva_count = 0
+    indeterminada_count = 0
+    activa_count = 0
 
-        # Sort sip codes for consistent column order
-        sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
+    # Sort sip codes for consistent column order
+    sorted_sip_codes = sorted([int(c) for c in all_sip_codes if pd.notna(c)])
 
-        for e164, data in stats.items():
-            total = data['total']
-            sip_counts = data['sip_counts']
-            
-            # Check if number has ANY no_response code (404 or 480)
-            has_no_response = (404 in sip_counts) or (480 in sip_counts)
-            if has_no_response:
-                numeros_con_no_response += 1
-            else:
-                numeros_sin_no_response += 1
-
-            # Track global date range
-            if global_first_date is None or data['first_date'] < global_first_date:
-                global_first_date = data['first_date']
-            if global_last_date is None or data['last_date'] > global_last_date:
-                global_last_date = data['last_date']
-
-            has_200 = 200 in sip_counts
-            count_404 = sip_counts.get(404, 0)
-            pct_404_val = (count_404 / total * 100) if total > 0 else 0
-            
-            is_no_response_temp = False
-            
-            if has_200:
-                numeros_excluidos_200 += 1
-            elif pct_404_val > 30:
-                numeros_excluidos_404 += 1
-            elif total < min_frequency:
-                numeros_con_frecuencia_insuficiente += 1
-            else:
-                is_no_response_temp = True
-                numeros_match += 1
-            
-            if not is_no_response_temp:
-                numeros_no_match += 1
-                continue # Only include NO_RESPONSE_TEMP in final CSV
-
-            num_days = len(data['days'])
-            avg_daily_frequency = total / num_days if num_days > 0 else 0
-
-            # LineState Calculation
-            avg_duration = data['total_secs'] / total if total > 0 else 0
-            if avg_duration < 5:
-                line_state = "Inactiva"
-                inactiva_count += 1
-            elif avg_duration < 10:
-                line_state = "Indeterminada"
-                indeterminada_count += 1
-            else:
-                line_state = "Activa"
-                activa_count += 1
-
-            res_row = {
-                'e164': e164,
-                'first_date': data['first_date'].strftime('%Y-%m-%d'),
-                'last_date': data['last_date'].strftime('%Y-%m-%d'),
-                'avg_daily_frequency': round(avg_daily_frequency, 2),
-                'frequency': total,
-                'pct_404': round(pct_404_val, 2),
-                'LineState': line_state,
-                'status': 'NO_RESPONSE_TEMP'
-            }
-            
-            # Add dynamic pct columns
-            for sc in sorted_sip_codes:
-                if sc == 404:
-                    continue
-                sc_count = sip_counts.get(sc, 0)
-                sc_pct = (sc_count / total * 100) if total > 0 else 0
-                res_row[f'pct_{sc}'] = round(sc_pct, 2)
-
-            results.append(res_row)
-
-        # Write to CSV
-        # Ensure columns are in requested order and headers are always present
-        base_cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'LineState', 'status']
-        dynamic_cols = [f'pct_{sc}' for sc in sorted_sip_codes if sc != 404]
-        cols = base_cols + dynamic_cols
+    for e164, data in stats.items():
+        total = data['total']
+        sip_counts = data['sip_counts']
         
-        df_results = pd.DataFrame(results, columns=cols)
-        df_results.to_csv(output_path, index=False, sep=';')
+        # Check if number has ANY no_response code (404 or 480)
+        has_no_response = (404 in sip_counts) or (480 in sip_counts)
+        if has_no_response:
+            numeros_con_no_response += 1
+        else:
+            numeros_sin_no_response += 1
 
-        summary = {
-            'total_registros': total_rows,
-            'total_numeros_unicos': total_numeros_unicos,
-            'numeros_excluidos_200': numeros_excluidos_200,
-            'numeros_excluidos_404': numeros_excluidos_404,
-            'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
-            'numeros_match': numeros_match,
-            'numeros_no_match': numeros_no_match,
-            'filas_invalidas_descartadas': invalid_rows,
-            'numeros_con_no_response': numeros_con_no_response,
-            'numeros_sin_no_response': numeros_sin_no_response,
-            'inactiva_count': inactiva_count,
-            'indeterminada_count': indeterminada_count,
-            'activa_count': activa_count,
-            'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
-            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
-            'conversion_errors': conversion_errors[:10], # Show first 10 errors
-            'files_skipped': skipped_filenames,
-            'days_considered': [str(d) for d in sorted(list(days_considered))]
+        # Track global date range
+        if global_first_date is None or data['first_date'] < global_first_date:
+            global_first_date = data['first_date']
+        if global_last_date is None or data['last_date'] > global_last_date:
+            global_last_date = data['last_date']
+
+        has_200 = 200 in sip_counts
+        count_404 = sip_counts.get(404, 0)
+        pct_404_val = (count_404 / total * 100) if total > 0 else 0
+        
+        is_no_response_temp = False
+        
+        if has_200:
+            numeros_excluidos_200 += 1
+        elif pct_404_val > 30:
+            numeros_excluidos_404 += 1
+        elif total < min_frequency:
+            numeros_con_frecuencia_insuficiente += 1
+        else:
+            is_no_response_temp = True
+            numeros_match += 1
+        
+        if not is_no_response_temp:
+            numeros_no_match += 1
+            continue # Only include NO_RESPONSE_TEMP in final CSV
+
+        num_days = len(data['days'])
+        avg_daily_frequency = total / num_days if num_days > 0 else 0
+
+        # LineState Calculation
+        avg_duration = data['total_secs'] / total if total > 0 else 0
+        if avg_duration < 5:
+            line_state = "Inactiva"
+            inactiva_count += 1
+        elif avg_duration < 10:
+            line_state = "Indeterminada"
+            indeterminada_count += 1
+        else:
+            line_state = "Activa"
+            activa_count += 1
+
+        res_row = {
+            'e164': e164,
+            'first_date': data['first_date'].strftime('%Y-%m-%d'),
+            'last_date': data['last_date'].strftime('%Y-%m-%d'),
+            'avg_daily_frequency': round(avg_daily_frequency, 2),
+            'frequency': total,
+            'pct_404': round(pct_404_val, 2),
+            'LineState': line_state,
+            'status': 'NO_RESPONSE_TEMP'
         }
+        
+        # Add dynamic pct columns
+        for sc in sorted_sip_codes:
+            if sc == 404:
+                continue
+            sc_count = sip_counts.get(sc, 0)
+            sc_pct = (sc_count / total * 100) if total > 0 else 0
+            res_row[f'pct_{sc}'] = round(sc_pct, 2)
 
-        if progress_callback:
-            progress_callback(100, "completed", "Análisis completado exitosamente.")
+        results.append(res_row)
 
-        return summary
+    # Write to CSV
+    # Ensure columns are in requested order and headers are always present
+    base_cols = ['e164', 'first_date', 'last_date', 'avg_daily_frequency', 'frequency', 'pct_404', 'LineState', 'status']
+    dynamic_cols = [f'pct_{sc}' for sc in sorted_sip_codes if sc != 404]
+    cols = base_cols + dynamic_cols
+    
+    df_results = pd.DataFrame(results, columns=cols)
+    df_results.to_csv(output_path, index=False, sep=';')
 
-    except Exception as e:
-        logger.error(f"Error in analyzer: {str(e)}")
-        if progress_callback:
-            progress_callback(0, "failed", f"Error: {str(e)}")
-        raise e
+    summary = {
+        'total_registros': total_rows,
+        'total_numeros_unicos': total_numeros_unicos,
+        'numeros_excluidos_200': numeros_excluidos_200,
+        'numeros_excluidos_404': numeros_excluidos_404,
+        'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
+        'numeros_match': numeros_match,
+        'numeros_no_match': numeros_no_match,
+        'filas_invalidas_descartadas': invalid_rows,
+        'numeros_con_no_response': numeros_con_no_response,
+        'numeros_sin_no_response': numeros_sin_no_response,
+        'inactiva_count': inactiva_count,
+        'indeterminada_count': indeterminada_count,
+        'activa_count': activa_count,
+        'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+        'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+        'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+        'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
+        'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
+        'conversion_errors': conversion_errors[:10], # Show first 10 errors
+        'files_skipped': skipped_filenames,
+        'days_considered': [str(d) for d in sorted(list(days_considered))]
+    }
+
+    if progress_callback:
+        progress_callback(100, "completed", "Análisis completado exitosamente.")
+
+    return summary
 
 def analyze_asr_chunked(
     input_paths: list[str],
