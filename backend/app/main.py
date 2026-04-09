@@ -20,6 +20,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CDR Analyzer API")
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Background task for periodic cleanup
 async def periodic_cleanup():
     while True:
@@ -33,15 +42,6 @@ async def periodic_cleanup():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(periodic_cleanup())
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 api_router = APIRouter(prefix="/api")
 
