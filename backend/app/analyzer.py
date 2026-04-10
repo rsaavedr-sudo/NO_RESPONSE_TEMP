@@ -376,24 +376,26 @@ def analyze_cdr_chunked(
                 # we currently ADD them (as per save_daily_stats ON CONFLICT DO UPDATE SET total = total + excluded.total).
                 # This might be a bit loose but matches the "avoid duplicating cases already considered if the file is the SAME" requirement.
                 
-                # For the final classification, we merge the counts
-                s['total'] += int(row['total_intentos'])
-                s['total_secs'] += float(row['total_secs'])
+                # Overwrite with aggregated data from DB (which includes current batch)
+                # to avoid double counting and ensure full window coverage.
+                s['total'] = int(row['total_intentos'])
+                s['total_secs'] = float(row['total_secs'])
+                s['first_date'] = pd.to_datetime(row['first_date'])
+                s['last_date'] = pd.to_datetime(row['last_date'])
+                s['historical_days_count'] = int(row['dias_con_actividad'])
                 
-                # Main SIP codes
+                # Rebuild SIP counts from DB (main codes + others)
+                new_sip_counts = {}
                 for code in [200, 404, 480, 487, 503]:
                     col = 'total_200ok' if code == 200 else f'total_{code}'
                     if col in row and row[col] > 0:
-                        s['sip_counts'][code] = s['sip_counts'].get(code, 0) + int(row[col])
+                        new_sip_counts[code] = int(row[col])
                         all_sip_codes.add(code)
                 
-                # Others
                 if 'otros_sip_codes' in row and row['otros_sip_codes'] > 0:
-                    s['sip_counts'][999] = s['sip_counts'].get(999, 0) + int(row['otros_sip_codes'])
+                    new_sip_counts[999] = int(row['otros_sip_codes'])
                 
-                # Update days count
-                if 'dias_con_actividad' in row:
-                    s['historical_days_count'] = int(row['dias_con_actividad'])
+                s['sip_counts'] = new_sip_counts
 
     # Final Classification and Output Generation
     if progress_callback:
@@ -456,9 +458,11 @@ def analyze_cdr_chunked(
             numeros_no_match += 1
             continue # Only include NO_RESPONSE_TEMP in final CSV
 
-        num_days = data.get('historical_days_count', len(data['days']))
+        # Calculate number of days for frequency
+        # Priority: historical_days_count (from DB) > len(days) (from current batch)
+        num_days = data.get('historical_days_count', 0)
         if num_days == 0:
-            num_days = len(data['days'])
+            num_days = len(data.get('days', []))
             
         avg_daily_frequency = total / num_days if num_days > 0 else 0
 

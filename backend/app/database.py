@@ -182,7 +182,9 @@ def get_historical_stats(start_date: str, end_date: str) -> pd.DataFrame:
             SUM(total_secs) as total_secs,
             MAX(max_secs) as max_secs,
             MIN(min_secs) as min_secs,
-            COUNT(DISTINCT date) as dias_con_actividad
+            COUNT(DISTINCT date) as dias_con_actividad,
+            MIN(date) as first_date,
+            MAX(date) as last_date
         FROM daily_stats
         WHERE date >= ? AND date <= ?
         GROUP BY e164
