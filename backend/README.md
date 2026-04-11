@@ -18,8 +18,10 @@ Este es el backend refactorizado para procesar archivos CSV de gran escala (mill
 
 1. Iniciar el servidor FastAPI:
    ```bash
-   uvicorn app.main:app --reload --port 8000
+   # Desde la carpeta /backend
+   uvicorn app.main:app --host 0.0.0.0 --port 8000
    ```
+   *Nota: Se recomienda NO usar --reload para análisis de larga duración para evitar reinicios inesperados del proceso.*
 
 ## Endpoints
 

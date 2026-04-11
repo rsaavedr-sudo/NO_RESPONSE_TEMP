@@ -14,21 +14,29 @@ Herramienta robusta para el análisis de Call Detail Records (CDR) diseñada par
 - **Clasificación:** Identifica números que pasan los filtros y cumplen con la frecuencia mínima.
 - **Exportación:** Genera un CSV descargable con los resultados (`e164`, `frequency`, `analysis_days`, `min_frequency`).
 
-## 🛠️ Instalación y Ejecución
+## 🛠️ Instalación y Ejecución (Modo Desarrollo)
 
-### Versión Web (React/TypeScript) - Recomendada
-Esta versión está optimizada para ejecutarse en este entorno.
+Para un entorno estable, se deben levantar el Backend y el Frontend por separado.
 
-1. Instalar dependencias:
-   ```bash
-   npm install
-   ```
-2. Ejecutar en desarrollo:
-   ```bash
-   npm run dev
-   ```
+### 1. Backend (FastAPI)
+```bash
+cd backend
+# Se recomienda usar un entorno virtual (venv)
+# source venv/bin/activate 
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+*Nota: Evite usar `--reload` en análisis pesados para mayor estabilidad.*
 
-### Versión Python (Streamlit)
+### 2. Frontend (Vite + React)
+```bash
+# Desde la raíz del proyecto
+npm install
+npm run dev
+```
+El frontend estará disponible en `http://localhost:3000` y se comunicará con el backend en el puerto 8000.
+
+### Versión Python (Streamlit) - Alternativa
 Se incluye el código fuente en la carpeta `python_version/` para su uso en entornos locales con Python 3.10+.
 
 1. Instalar dependencias:

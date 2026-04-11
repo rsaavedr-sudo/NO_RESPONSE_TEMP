@@ -195,13 +195,38 @@ async def get_job_status(job_id: str):
 @api_router.get("/jobs/last/{analysis_type}", response_model=JobStatus)
 async def get_last_job_status(analysis_type: str):
     """
-    Returns the most recent completed job for a given analysis type.
+    Returns the most recent completed job for a given analysis type, checking memory and DB.
     """
+    # 1. Check memory
     job = get_last_job(analysis_type)
-    if not job:
+    
+    # 2. Check DB if no memory job or to find a more recent one
+    from .database import get_analysis_runs_history
+    db_history = get_analysis_runs_history()
+    db_job = next((j for j in db_history if j.get("analysis_type") == analysis_type and j["status"] == "completed"), None)
+    
+    # Compare and pick the most recent
+    final_job = job
+    if db_job:
+        if not final_job:
+            final_job = db_job
+        else:
+            # Compare created_at
+            mem_created = final_job["created_at"]
+            if isinstance(mem_created, str):
+                mem_created = datetime.fromisoformat(mem_created.replace('Z', '+00:00'))
+            
+            db_created = db_job["created_at"]
+            if isinstance(db_created, str):
+                db_created = datetime.fromisoformat(db_created.replace('Z', '+00:00'))
+            
+            if db_created > mem_created:
+                final_job = db_job
+    
+    if not final_job:
         raise HTTPException(status_code=404, detail=f"No completed job found for type {analysis_type}")
     
-    return format_job_status(job)
+    return format_job_status(final_job)
 
 def format_job_status(job: dict):
     try:
@@ -212,25 +237,31 @@ def format_job_status(job: dict):
         stats = None
         if safe_job.get("stats"):
             stats = AnalysisStats(**safe_job["stats"])
+        elif safe_job.get("summary_json"):
+            try:
+                summary = json.loads(safe_job["summary_json"])
+                stats = AnalysisStats(**summary)
+            except:
+                pass
         
         return JobStatus(
             job_id=safe_job["job_id"],
             status=safe_job["status"],
             analysis_type=safe_job.get("analysis_type", "no_response"),
-            progress_percent=safe_job["progress_percent"],
-            stage=safe_job["stage"],
-            message=safe_job["message"],
+            progress_percent=safe_job.get("progress_percent", 100 if safe_job["status"] == "completed" else 0),
+            stage=safe_job.get("stage", safe_job["status"]),
+            message=safe_job.get("message", "Completado" if safe_job["status"] == "completed" else ""),
             stats=stats,
             result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
             error=safe_job.get("error"),
-            processed_records=safe_job.get("processed_records"),
+            processed_records=safe_job.get("processed_records") or safe_job.get("total_numbers_analyzed"),
             use_history=safe_job.get("use_history", True),
             history_days=safe_job.get("history_days", 30),
             files_skipped=safe_job.get("files_skipped", []),
             days_considered=safe_job.get("days_considered", []),
             logs=safe_job.get("logs", []),
-            last_update=safe_job.get("last_update") or safe_job.get("created_at"),
+            last_update=safe_job.get("last_update") or safe_job.get("completed_at") or safe_job.get("created_at"),
             created_at=safe_job.get("created_at"),
             completed_at=safe_job.get("completed_at")
         )
@@ -295,33 +326,56 @@ async def cancel_analysis(job_id: str):
 
 @api_router.get("/history", response_model=List[JobStatus])
 async def list_history():
-    """Returns a list of all completed or failed analyses."""
-    history = get_history()
-    safe_history = []
-    for job in history:
-        # Sanitize job data
-        safe_job = to_json_safe(job)
+    """Returns a list of all completed or failed analyses, merging memory and DB."""
+    memory_history = get_history()
+    from .database import get_analysis_runs_history
+    db_history = get_analysis_runs_history()
+    
+    seen_job_ids = set()
+    combined_history = []
+    
+    def format_job(job_data):
+        safe_job = to_json_safe(job_data)
         stats = None
         if safe_job.get("stats"):
             stats = AnalysisStats(**safe_job["stats"])
+        elif safe_job.get("summary_json"):
+            try:
+                summary = json.loads(safe_job["summary_json"])
+                stats = AnalysisStats(**summary)
+            except:
+                pass
         
-        safe_history.append(JobStatus(
+        return JobStatus(
             job_id=safe_job["job_id"],
             status=safe_job["status"],
             analysis_type=safe_job.get("analysis_type", "no_response"),
-            progress_percent=safe_job["progress_percent"],
-            stage=safe_job["stage"],
-            message=safe_job["message"],
+            progress_percent=safe_job.get("progress_percent", 100 if safe_job["status"] == "completed" else 0),
+            stage=safe_job.get("stage", safe_job["status"]),
+            message=safe_job.get("message", "Completado" if safe_job["status"] == "completed" else ""),
             stats=stats,
             result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
             error=safe_job.get("error"),
-            processed_records=safe_job.get("processed_records"),
+            processed_records=safe_job.get("processed_records") or safe_job.get("total_numbers_analyzed"),
             logs=safe_job.get("logs", []),
-            last_update=safe_job.get("last_update") or safe_job.get("created_at"),
-            created_at=safe_job.get("created_at")
-        ))
-    return safe_history
+            last_update=safe_job.get("last_update") or safe_job.get("completed_at") or safe_job.get("created_at"),
+            created_at=safe_job.get("created_at"),
+            completed_at=safe_job.get("completed_at")
+        )
+
+    for job in memory_history:
+        if job["job_id"] not in seen_job_ids:
+            combined_history.append(format_job(job))
+            seen_job_ids.add(job["job_id"])
+            
+    for db_job in db_history:
+        if db_job["job_id"] not in seen_job_ids:
+            combined_history.append(format_job(db_job))
+            seen_job_ids.add(db_job["job_id"])
+            
+    combined_history.sort(key=lambda x: x.created_at, reverse=True)
+    return combined_history
 
 @api_router.delete("/history/{job_id}")
 async def delete_history_item(job_id: str):

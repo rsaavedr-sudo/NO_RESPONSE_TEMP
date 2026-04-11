@@ -53,7 +53,7 @@ class AnalysisStats(BaseModel):
     activa_pct: Optional[float] = None
     
     # Common fields
-    filas_invalidas_descartadas: int
+    filas_invalidas_descartadas: Optional[int] = 0
     first_date: Optional[str] = None
     last_date: Optional[str] = None
     cdr_stats: Optional[List[Dict[str, Any]]] = None

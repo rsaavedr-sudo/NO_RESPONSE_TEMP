@@ -161,6 +161,14 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
         setJobStatus(data);
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setActiveJobId(null);
+          
+          if (data.status === 'completed') {
+            log('no_response', 'completado', data.stats);
+            // Refresh processed batches
+            fetchProcessedBatches();
+          }
         }
       } catch (err: any) {
         setError('Error de conexión con el servidor');

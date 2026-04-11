@@ -80,6 +80,7 @@ def init_db():
             status TEXT,
             total_numbers_analyzed INTEGER,
             total_numbers_flagged INTEGER,
+            summary_json TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             completed_at DATETIME,
             result_file_path TEXT,
@@ -255,17 +256,18 @@ def create_analysis_run(job_id: str, analysis_type: str, period_start: str, peri
     conn.close()
     return run_id
 
-def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, result_path: str):
+def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, result_path: str, summary: Dict[str, Any] = None):
     """Completes an analysis run record."""
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.now().isoformat()
+    summary_json = json.dumps(to_json_safe(summary)) if summary else None
     cursor.execute("""
         UPDATE analysis_runs 
         SET status = 'completed', completed_at = ?, total_numbers_analyzed = ?, 
-            total_numbers_flagged = ?, result_file_path = ?
+            total_numbers_flagged = ?, result_file_path = ?, summary_json = ?
         WHERE id = ?
-    """, (now, total_analyzed, total_flagged, result_path, run_id))
+    """, (now, total_analyzed, total_flagged, result_path, summary_json, run_id))
     conn.commit()
     conn.close()
 
@@ -297,6 +299,23 @@ def save_analysis_run_numbers(run_id: int, results: List[Dict[str, Any]]):
     
     conn.commit()
     conn.close()
+
+def get_analysis_runs_history() -> List[Dict[str, Any]]:
+    """Returns the history of analysis runs from the database."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM analysis_runs 
+        ORDER BY created_at DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        history.append(dict(row))
+    return history
 
 # Initialize on import
 init_db()

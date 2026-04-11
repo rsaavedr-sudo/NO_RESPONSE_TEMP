@@ -545,7 +545,7 @@ def analyze_cdr_chunked(
 
         # Record analysis results in DB
         if run_id:
-            complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path)
+            complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path, summary)
             logger.info(f"DB: Ejecución de análisis {run_id} marcada como completada")
             
             # Prepare detailed results for DB
