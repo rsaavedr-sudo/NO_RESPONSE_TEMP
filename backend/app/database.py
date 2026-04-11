@@ -24,37 +24,97 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Table for daily aggregated stats per number
+    # 1) TABLE: processed_batches
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS daily_stats (
-            e164 TEXT,
-            date TEXT,
-            total_intentos INTEGER DEFAULT 0,
-            total_200ok INTEGER DEFAULT 0,
-            total_404 INTEGER DEFAULT 0,
-            total_480 INTEGER DEFAULT 0,
-            total_487 INTEGER DEFAULT 0,
-            total_503 INTEGER DEFAULT 0,
-            otros_sip_codes INTEGER DEFAULT 0,
-            total_secs REAL DEFAULT 0,
-            max_secs REAL DEFAULT 0,
-            min_secs REAL DEFAULT 0,
-            created_at TEXT,
-            updated_at TEXT,
-            PRIMARY KEY (e164, date)
+        CREATE TABLE IF NOT EXISTS processed_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_name TEXT,
+            source_filename TEXT,
+            file_hash TEXT UNIQUE,
+            period_start DATE,
+            period_end DATE,
+            total_rows INTEGER,
+            processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT
         )
     """)
     
-    # Table to track processed files for deduplication
+    # 2) TABLE: number_daily_summary
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS processed_files (
-            filename TEXT PRIMARY KEY,
-            file_hash TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            ingested_at TEXT
+        CREATE TABLE IF NOT EXISTS number_daily_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            number_e164 TEXT,
+            summary_date DATE,
+            total_attempts INTEGER,
+            total_200ok INTEGER,
+            total_404 INTEGER,
+            total_480 INTEGER,
+            total_487 INTEGER,
+            total_503 INTEGER,
+            total_other_sip INTEGER,
+            avg_tot_secs REAL,
+            min_tot_secs REAL,
+            max_tot_secs REAL,
+            avg_daily_frequency REAL,
+            has_200ok INTEGER,
+            candidate_no_response INTEGER,
+            source_batch_id INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(number_e164, summary_date),
+            FOREIGN KEY (source_batch_id) REFERENCES processed_batches(id)
         )
     """)
+    
+    # 3) TABLE: analysis_runs
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analysis_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT,
+            analysis_type TEXT,
+            period_start DATE,
+            period_end DATE,
+            used_history INTEGER,
+            history_days INTEGER,
+            deduplication_enabled INTEGER,
+            status TEXT,
+            total_numbers_analyzed INTEGER,
+            total_numbers_flagged INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            result_file_path TEXT,
+            notes TEXT
+        )
+    """)
+    
+    # 4) TABLE: analysis_run_numbers
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analysis_run_numbers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            analysis_run_id INTEGER,
+            number_e164 TEXT,
+            final_status TEXT,
+            total_attempts_window INTEGER,
+            total_200ok_window INTEGER,
+            total_404_window INTEGER,
+            total_480_window INTEGER,
+            total_487_window INTEGER,
+            total_503_window INTEGER,
+            avg_tot_secs_window REAL,
+            days_observed INTEGER,
+            days_without_200ok INTEGER,
+            included_from_history INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (analysis_run_id) REFERENCES analysis_runs(id)
+        )
+    """)
+    
+    # 5) INDICES
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_number_date ON number_daily_summary (number_e164, summary_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_run_numbers (analysis_run_id)")
+    
+    # Legacy tables (keep for compatibility during migration if needed, or just remove if we want a clean start)
+    # For this task, we'll stick to the requested ones.
     
     conn.commit()
     conn.close()
@@ -64,28 +124,18 @@ def get_file_hash(file_path: str) -> str:
     """Calculates SHA256 hash of a file."""
     sha256_hash = hashlib.sha256()
     with open(file_path, "rb") as f:
-        # Read in chunks to handle large files
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
 def is_file_processed(filename: str, file_path: Optional[str] = None) -> bool:
-    """Checks if a file has already been processed by name or hash."""
+    """Checks if a file has already been processed by hash."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Check by filename first
-    cursor.execute("SELECT file_hash FROM processed_files WHERE filename = ?", (filename,))
-    row = cursor.fetchone()
-    
-    if row:
-        conn.close()
-        return True
-    
-    # If file_path provided, check by hash
     if file_path:
         f_hash = get_file_hash(file_path)
-        cursor.execute("SELECT filename FROM processed_files WHERE file_hash = ?", (f_hash,))
+        cursor.execute("SELECT id FROM processed_batches WHERE file_hash = ?", (f_hash,))
         row = cursor.fetchone()
         if row:
             conn.close()
@@ -94,104 +144,150 @@ def is_file_processed(filename: str, file_path: Optional[str] = None) -> bool:
     conn.close()
     return False
 
-def register_processed_file(filename: str, file_hash: str, start_date: str, end_date: str):
-    """Registers a file as processed."""
+def register_processed_batch(batch_name: str, filename: str, file_hash: str, start_date: str, end_date: str, total_rows: int) -> int:
+    """Registers a batch as processed and returns its ID."""
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.now().isoformat()
     
     cursor.execute("""
-        INSERT OR REPLACE INTO processed_files (filename, file_hash, start_date, end_date, ingested_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (filename, file_hash, start_date, end_date, now))
+        INSERT INTO processed_batches (batch_name, source_filename, file_hash, period_start, period_end, total_rows)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (batch_name, filename, file_hash, start_date, end_date, total_rows))
     
+    batch_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return batch_id
 
-def save_daily_stats(df: pd.DataFrame):
-    """
-    Saves or updates daily stats from a DataFrame.
-    DataFrame must have columns: e164, date, total_intentos, total_200ok, etc.
-    """
+def save_daily_summary(df: pd.DataFrame, batch_id: int):
+    """Saves daily summaries to the database."""
     if df.empty:
         return
         
     conn = get_connection()
     now = datetime.now().isoformat()
     
-    # We use a temporary table to perform an upsert (INSERT OR REPLACE)
-    # or we can just iterate if the volume is manageable. 
-    # For better performance with large DataFrames, we'll use to_sql with a temp table.
-    
     try:
-        # Add timestamps
-        df['updated_at'] = now
-        
-        # For new records, we need created_at. 
-        # This is tricky with INSERT OR REPLACE because it overwrites created_at if we just pass it.
-        # We'll use a manual loop for now to be safe with the logic, 
-        # but in a real high-volume app we'd use a proper SQL UPSERT.
-        
         cursor = conn.cursor()
         for _, row in df.iterrows():
             cursor.execute("""
-                INSERT INTO daily_stats (
-                    e164, date, total_intentos, total_200ok, total_404, 
-                    total_480, total_487, total_503, otros_sip_codes, 
-                    total_secs, max_secs, min_secs, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(e164, date) DO UPDATE SET
-                    total_intentos = total_intentos + excluded.total_intentos,
+                INSERT INTO number_daily_summary (
+                    number_e164, summary_date, total_attempts, total_200ok, 
+                    total_404, total_480, total_487, total_503, total_other_sip, 
+                    avg_tot_secs, min_tot_secs, max_tot_secs, source_batch_id,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(number_e164, summary_date) DO UPDATE SET
+                    total_attempts = total_attempts + excluded.total_attempts,
                     total_200ok = total_200ok + excluded.total_200ok,
                     total_404 = total_404 + excluded.total_404,
                     total_480 = total_480 + excluded.total_480,
                     total_487 = total_487 + excluded.total_487,
                     total_503 = total_503 + excluded.total_503,
-                    otros_sip_codes = otros_sip_codes + excluded.otros_sip_codes,
-                    total_secs = total_secs + excluded.total_secs,
-                    max_secs = MAX(max_secs, excluded.max_secs),
-                    min_secs = MIN(min_secs, excluded.min_secs),
-                    updated_at = excluded.updated_at
+                    total_other_sip = total_other_sip + excluded.total_other_sip,
+                    avg_tot_secs = (avg_tot_secs * total_attempts + excluded.avg_tot_secs * excluded.total_attempts) / (total_attempts + excluded.total_attempts),
+                    max_tot_secs = MAX(max_tot_secs, excluded.max_tot_secs),
+                    min_tot_secs = MIN(min_tot_secs, excluded.min_tot_secs),
+                    updated_at = excluded.updated_at,
+                    source_batch_id = excluded.source_batch_id
             """, (
                 row['e164'], row['date'], row['total_intentos'], row['total_200ok'], 
                 row['total_404'], row['total_480'], row['total_487'], row['total_503'], 
-                row['otros_sip_codes'], row['total_secs'], row['max_secs'], row['min_secs'], 
-                now, now
+                row['otros_sip_codes'], row['total_secs'] / row['total_intentos'] if row['total_intentos'] > 0 else 0,
+                row['min_secs'], row['max_secs'], batch_id, now, now
             ))
         
         conn.commit()
     except Exception as e:
-        logger.error(f"Error saving daily stats: {e}")
+        logger.error(f"Error saving daily summary: {e}")
         conn.rollback()
     finally:
         conn.close()
 
-def get_historical_stats(start_date: str, end_date: str) -> pd.DataFrame:
-    """Retrieves aggregated stats for a date range."""
+def get_historical_summary(start_date: str, end_date: str) -> pd.DataFrame:
+    """Retrieves aggregated historical summary for a date range."""
     conn = get_connection()
     query = """
         SELECT 
-            e164,
-            SUM(total_intentos) as total_intentos,
+            number_e164 as e164,
+            SUM(total_attempts) as total_intentos,
             SUM(total_200ok) as total_200ok,
             SUM(total_404) as total_404,
             SUM(total_480) as total_480,
             SUM(total_487) as total_487,
             SUM(total_503) as total_503,
-            SUM(otros_sip_codes) as otros_sip_codes,
-            SUM(total_secs) as total_secs,
-            MAX(max_secs) as max_secs,
-            MIN(min_secs) as min_secs,
-            COUNT(DISTINCT date) as dias_con_actividad,
-            MIN(date) as first_date,
-            MAX(date) as last_date
-        FROM daily_stats
-        WHERE date >= ? AND date <= ?
-        GROUP BY e164
+            SUM(total_other_sip) as otros_sip_codes,
+            SUM(avg_tot_secs * total_attempts) as total_secs,
+            MAX(max_tot_secs) as max_secs,
+            MIN(min_tot_secs) as min_secs,
+            COUNT(DISTINCT summary_date) as dias_con_actividad,
+            MIN(summary_date) as first_date,
+            MAX(summary_date) as last_date
+        FROM number_daily_summary
+        WHERE summary_date >= ? AND summary_date <= ?
+        GROUP BY number_e164
     """
     df = pd.read_sql_query(query, conn, params=(start_date, end_date))
     conn.close()
     return df
+
+def create_analysis_run(job_id: str, analysis_type: str, period_start: str, period_end: str, used_history: bool, history_days: int, deduplication_enabled: bool) -> int:
+    """Creates an analysis run record."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO analysis_runs (
+            job_id, analysis_type, period_start, period_end, 
+            used_history, history_days, deduplication_enabled, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, analysis_type, period_start, period_end, 1 if used_history else 0, history_days, 1 if deduplication_enabled else 0, 'running'))
+    run_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, result_path: str):
+    """Completes an analysis run record."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute("""
+        UPDATE analysis_runs 
+        SET status = 'completed', completed_at = ?, total_numbers_analyzed = ?, 
+            total_numbers_flagged = ?, result_file_path = ?
+        WHERE id = ?
+    """, (now, total_analyzed, total_flagged, result_path, run_id))
+    conn.commit()
+    conn.close()
+
+def save_analysis_run_numbers(run_id: int, results: List[Dict[str, Any]]):
+    """Saves individual number results for an analysis run."""
+    if not results:
+        return
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # We'll use a batch insert for performance
+    data = []
+    for r in results:
+        data.append((
+            run_id, r['e164'], r['status'], r['total_attempts'],
+            r['total_200ok'], r['total_404'], r['total_480'], 
+            r['total_487'], r['total_503'], r['avg_secs'],
+            r['days_observed'], r['days_without_200ok'], r['from_history']
+        ))
+    
+    cursor.executemany("""
+        INSERT INTO analysis_run_numbers (
+            analysis_run_id, number_e164, final_status, total_attempts_window,
+            total_200ok_window, total_404_window, total_480_window, 
+            total_487_window, total_503_window, avg_tot_secs_window,
+            days_observed, days_without_200ok, included_from_history
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, data)
+    
+    conn.commit()
+    conn.close()
 
 # Initialize on import
 init_db()

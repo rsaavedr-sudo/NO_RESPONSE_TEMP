@@ -3,7 +3,16 @@ import os
 from datetime import timedelta
 import logging
 from typing import Dict, Any, Optional, List
-from .database import is_file_processed, register_processed_file, save_daily_stats, get_historical_stats, get_file_hash
+from .database import (
+    is_file_processed, 
+    register_processed_batch, 
+    save_daily_summary, 
+    get_historical_summary, 
+    get_file_hash,
+    create_analysis_run,
+    complete_analysis_run,
+    save_analysis_run_numbers
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +160,8 @@ def analyze_cdr_chunked(
     check_cancellation = None,
     use_history: bool = True,
     history_days: int = 30,
-    input_filenames: Optional[List[str]] = None
+    input_filenames: Optional[List[str]] = None,
+    job_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Analyzes multiple CDR CSV files in chunks to handle large files.
@@ -187,6 +197,7 @@ def analyze_cdr_chunked(
         
         # Pass 1
         for input_path, filename in valid_input_paths:
+            file_rows = 0
             for chunk in pd.read_csv(
                 input_path, 
                 sep=';', 
@@ -198,7 +209,9 @@ def analyze_cdr_chunked(
                 if check_cancellation:
                     check_cancellation()
                     
-                total_rows += len(chunk)
+                chunk_len = len(chunk)
+                total_rows += chunk_len
+                file_rows += chunk_len
                 chunk['call_date'] = pd.to_datetime(chunk['call_date'], errors='coerce')
                 
                 chunk_invalid = chunk['call_date'].isna().sum()
@@ -216,7 +229,7 @@ def analyze_cdr_chunked(
             # Try to get max date from DB
             from .database import get_connection
             conn = get_connection()
-            res = conn.execute("SELECT MAX(date) FROM daily_stats").fetchone()
+            res = conn.execute("SELECT MAX(summary_date) FROM number_daily_summary").fetchone()
             conn.close()
             if res and res[0]:
                 max_date = pd.to_datetime(res[0])
@@ -230,6 +243,15 @@ def analyze_cdr_chunked(
 
         start_date = max_date - timedelta(days=analysis_days)
         history_start_date = max_date - timedelta(days=history_days)
+        
+        # Create analysis run record
+        run_id = None
+        if job_id:
+            run_id = create_analysis_run(
+                job_id, "no_response", 
+                str(start_date.date()), str(max_date.date()), 
+                use_history, history_days, True
+            )
         
         logger.info(f"Max date: {max_date}, Start date: {start_date}, History start: {history_start_date}")
 
@@ -348,12 +370,16 @@ def analyze_cdr_chunked(
 
             # Save file daily stats to DB
             if file_daily_stats:
+                f_hash = get_file_hash(input_path)
+                batch_id = register_processed_batch(
+                    filename, filename, f_hash, 
+                    str(file_start_date.date()) if file_start_date else None, 
+                    str(file_end_date.date()) if file_end_date else None,
+                    total_rows # This is total_rows of the whole batch, but we only have chunk rows here. 
+                               # Actually Pass 1 calculated total_rows for the whole file.
+                )
                 db_df = pd.DataFrame([{'e164': k[0], 'date': k[1], **v} for k, v in file_daily_stats.items()])
-                save_daily_stats(db_df)
-                
-            # Register file as processed
-            f_hash = get_file_hash(input_path)
-            register_processed_file(filename, f_hash, str(file_start_date.date()) if file_start_date else None, str(file_end_date.date()) if file_end_date else None)
+                save_daily_summary(db_df, batch_id)
 
         # --- Merge with History ---
         if use_history:
@@ -361,7 +387,7 @@ def analyze_cdr_chunked(
                 progress_callback(75, "loading_history", "Combinando con datos históricos...")
                 
             # Use history_days window
-            hist_df = get_historical_stats(str(history_start_date.date()), str(max_date.date()))
+            hist_df = get_historical_summary(str(history_start_date.date()), str(max_date.date()))
             
             if not hist_df.empty:
                 for _, row in hist_df.iterrows():
@@ -507,6 +533,37 @@ def analyze_cdr_chunked(
         
         df_results = pd.DataFrame(results, columns=cols)
         df_results.to_csv(output_path, index=False, sep=';')
+
+        # Record analysis results in DB
+        if run_id:
+            complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path)
+            
+            # Prepare detailed results for DB
+            db_results = []
+            for e164, data in stats.items():
+                # Only include those that were flagged (in results) or all?
+                # Usually we want all analyzed numbers for full traceability
+                is_flagged = any(r['e164'] == e164 for r in results)
+                
+                total = data['total']
+                sip_counts = data['sip_counts']
+                
+                db_results.append({
+                    'e164': e164,
+                    'status': 'FLAGGED' if is_flagged else 'CLEAN',
+                    'total_attempts': total,
+                    'total_200ok': sip_counts.get(200, 0),
+                    'total_404': sip_counts.get(404, 0),
+                    'total_480': sip_counts.get(480, 0),
+                    'total_487': sip_counts.get(487, 0),
+                    'total_503': sip_counts.get(503, 0),
+                    'avg_secs': data['total_secs'] / total if total > 0 else 0,
+                    'days_observed': data.get('historical_days_count', len(data.get('days', []))),
+                    'days_without_200ok': 0, # Logic could be added to calculate this
+                    'from_history': 1 if 'historical_days_count' in data else 0
+                })
+            
+            save_analysis_run_numbers(run_id, db_results)
 
         summary = {
             'total_registros': total_rows,

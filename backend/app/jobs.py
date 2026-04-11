@@ -502,7 +502,8 @@ def run_analysis_task(
                 check_cancellation=check_cancel,
                 use_history=use_history,
                 history_days=history_days,
-                input_filenames=input_filenames
+                input_filenames=input_filenames,
+                job_id=job_id
             )
         elif analysis_type == "asr":
             stats = analyze_asr_chunked(
