@@ -88,7 +88,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({
           minAvgDailyFrequency
         );
       }
-    } else if (files.length > 0) {
+    } else if (files.length > 0 || useHistory) {
       onAnalyze(
         files, 
         analysisDays, 
@@ -370,14 +370,14 @@ export const UploadForm: React.FC<UploadFormProps> = ({
       <div className="flex gap-4">
         <button
           type="submit"
-          disabled={files.length === 0 || disabled}
+          disabled={(files.length === 0 && !useHistory) || disabled}
           className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all transform active:scale-[0.98] ${
-            files.length === 0 || disabled
+            (files.length === 0 && !useHistory) || disabled
               ? 'bg-gray-400 cursor-not-allowed shadow-none'
               : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl'
           }`}
         >
-          Iniciar Análisis Consolidado
+          {files.length === 0 && useHistory ? 'Iniciar Análisis Histórico' : 'Iniciar Análisis Consolidado'}
         </button>
         
         <button

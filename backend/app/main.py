@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 import asyncio
+import uuid
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -10,9 +11,18 @@ from typing import List, Optional
 from datetime import datetime
 import json
 
-from .schemas import AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, CleanupRequest, CleanupResponse, StorageStats
-from .jobs import create_job, run_analysis_task, get_job, get_last_job, TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
+from .schemas import (
+    AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, 
+    CleanupRequest, CleanupResponse, StorageStats,
+    ProcessedBatch, DuplicateCheckResponse, DuplicateCheckResult
+)
+from .jobs import (
+    create_job, run_analysis_task, get_job, get_last_job, 
+    TEMP_DIR, UPLOADS_DIR, RESULTS_DIR, jobs, cancel_job, 
+    get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
+)
 from .utils import to_json_safe, parse_float
+from .database import get_processed_batches, get_batch_by_hash, get_file_hash
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,6 +58,49 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/health")
 async def health():
     return {"status": "ok", "version": "2.4.0"}
+
+@api_router.get("/maintenance/processed-batches", response_model=List[ProcessedBatch])
+async def list_processed_batches():
+    """Returns a list of all processed batches."""
+    return get_processed_batches()
+
+@api_router.post("/check-duplicates", response_model=DuplicateCheckResponse)
+async def check_duplicates(files: List[UploadFile] = File(...)):
+    """Checks if uploaded files have already been processed."""
+    results = []
+    has_duplicates = False
+    
+    # We need to save them temporarily to calculate hash
+    temp_paths = []
+    try:
+        for file in files:
+            temp_path = os.path.join(TEMP_DIR, f"check_{uuid.uuid4()}_{file.filename}")
+            temp_paths.append(temp_path)
+            with open(temp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            f_hash = get_file_hash(temp_path)
+            existing = get_batch_by_hash(f_hash)
+            
+            if existing:
+                has_duplicates = True
+                results.append(DuplicateCheckResult(
+                    filename=file.filename,
+                    is_duplicate=True,
+                    existing_batch=ProcessedBatch(**existing)
+                ))
+            else:
+                results.append(DuplicateCheckResult(
+                    filename=file.filename,
+                    is_duplicate=False
+                ))
+    finally:
+        # Cleanup temp files
+        for path in temp_paths:
+            if os.path.exists(path):
+                os.remove(path)
+                
+    return DuplicateCheckResponse(results=results, has_duplicates=has_duplicates)
 
 @api_router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(

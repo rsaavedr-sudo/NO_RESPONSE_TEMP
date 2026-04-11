@@ -130,19 +130,28 @@ def get_file_hash(file_path: str) -> str:
 
 def is_file_processed(filename: str, file_path: Optional[str] = None) -> bool:
     """Checks if a file has already been processed by hash."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
     if file_path:
         f_hash = get_file_hash(file_path)
-        cursor.execute("SELECT id FROM processed_batches WHERE file_hash = ?", (f_hash,))
-        row = cursor.fetchone()
-        if row:
-            conn.close()
-            return True
-            
-    conn.close()
+        return get_batch_by_hash(f_hash) is not None
     return False
+
+def get_processed_batches() -> List[Dict[str, Any]]:
+    """Retrieves all processed batches."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM processed_batches ORDER BY processed_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_batch_by_hash(file_hash: str) -> Optional[Dict[str, Any]]:
+    """Retrieves a batch by its file hash."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM processed_batches WHERE file_hash = ?", (file_hash,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 def register_processed_batch(batch_name: str, filename: str, file_hash: str, start_date: str, end_date: str, total_rows: int) -> int:
     """Registers a batch as processed and returns its ID."""

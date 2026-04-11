@@ -92,3 +92,26 @@ export interface JobStatus {
   created_at: string;
   processed_records?: number;
 }
+
+export interface ProcessedBatch {
+  id: number;
+  batch_name: string;
+  source_filename: string;
+  file_hash: string;
+  period_start?: string;
+  period_end?: string;
+  total_rows: number;
+  processed_at: string;
+  notes?: string;
+}
+
+export interface DuplicateCheckResult {
+  filename: string;
+  is_duplicate: boolean;
+  existing_batch?: ProcessedBatch;
+}
+
+export interface DuplicateCheckResponse {
+  results: DuplicateCheckResult[];
+  has_duplicates: boolean;
+}

@@ -1,6 +1,11 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
-import { AnalysisStats, JobStatus } from '../types/api';
+import { 
+  AnalysisStats, 
+  JobStatus, 
+  ProcessedBatch, 
+  DuplicateCheckResponse 
+} from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 console.log('API_BASE_URL initialized as:', API_BASE_URL);
@@ -151,5 +156,23 @@ export const getHistory = async () => {
 
 export const deleteHistoryItem = async (jobId: string) => {
   const response = await axios.delete(`${API_BASE_URL}/history/${jobId}`);
+  return response.data;
+};
+
+export const checkDuplicates = async (files: File[]) => {
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('files', file);
+  });
+  const response = await axios.post<DuplicateCheckResponse>(`${API_BASE_URL}/check-duplicates`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+export const getProcessedBatches = async () => {
+  const response = await axios.get<ProcessedBatch[]>(`${API_BASE_URL}/maintenance/processed-batches`);
   return response.data;
 };

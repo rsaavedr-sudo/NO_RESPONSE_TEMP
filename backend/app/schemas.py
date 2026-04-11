@@ -123,3 +123,23 @@ class CleanupResponse(BaseModel):
     size_freed_bytes: int
     remaining_size_bytes: Optional[Dict[str, int]] = None
     message: str
+
+class ProcessedBatch(BaseModel):
+    id: int
+    batch_name: str
+    source_filename: str
+    file_hash: str
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
+    total_rows: int
+    processed_at: datetime
+    notes: Optional[str] = None
+
+class DuplicateCheckResult(BaseModel):
+    filename: str
+    is_duplicate: bool
+    existing_batch: Optional[ProcessedBatch] = None
+
+class DuplicateCheckResponse(BaseModel):
+    results: List[DuplicateCheckResult]
+    has_duplicates: bool
