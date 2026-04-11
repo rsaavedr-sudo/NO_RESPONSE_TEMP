@@ -178,9 +178,10 @@ def analyze_cdr_chunked(
         for i, path in enumerate(input_paths):
             filename = input_filenames[i] if input_filenames and i < len(input_filenames) else os.path.basename(path)
             if is_file_processed(filename, path):
-                logger.info(f"Skipping already processed file: {filename}")
+                logger.info(f"DEDUPLICACIÓN: Omitiendo archivo ya procesado: {filename}")
                 skipped_filenames.append(filename)
             else:
+                logger.info(f"DEDUPLICACIÓN: Archivo nuevo detectado: {filename}")
                 valid_input_paths.append((path, filename))
                 
         # Pass 1: Find max_date across ALL files (even skipped ones to know the current window)
@@ -233,7 +234,9 @@ def analyze_cdr_chunked(
             conn.close()
             if res and res[0]:
                 max_date = pd.to_datetime(res[0])
-                logger.info(f"Using max date from database: {max_date}")
+                logger.info(f"HISTORIAL: No hay archivos nuevos, usando fecha máxima de la base de datos: {max_date}")
+            else:
+                logger.info("HISTORIAL: No hay archivos nuevos ni datos en la base de datos.")
 
         if max_date is None:
             if skipped_filenames:
@@ -252,6 +255,7 @@ def analyze_cdr_chunked(
                 str(start_date.date()), str(max_date.date()), 
                 use_history, history_days, True
             )
+            logger.info(f"DB: Registro de ejecución de análisis creado (ID: {run_id})")
         
         logger.info(f"Max date: {max_date}, Start date: {start_date}, History start: {history_start_date}")
 
@@ -378,8 +382,11 @@ def analyze_cdr_chunked(
                     total_rows # This is total_rows of the whole batch, but we only have chunk rows here. 
                                # Actually Pass 1 calculated total_rows for the whole file.
                 )
+                logger.info(f"DB: Lote registrado en processed_batches (ID: {batch_id}, Hash: {f_hash[:10]}...)")
+                
                 db_df = pd.DataFrame([{'e164': k[0], 'date': k[1], **v} for k, v in file_daily_stats.items()])
                 save_daily_summary(db_df, batch_id)
+                logger.info(f"DB: {len(db_df)} resúmenes diarios guardados/actualizados en number_daily_summary")
 
         # --- Merge with History ---
         if use_history:
@@ -387,9 +394,11 @@ def analyze_cdr_chunked(
                 progress_callback(75, "loading_history", "Combinando con datos históricos...")
                 
             # Use history_days window
+            logger.info(f"HISTORIAL: Cargando datos desde {history_start_date.date()} hasta {max_date.date()}")
             hist_df = get_historical_summary(str(history_start_date.date()), str(max_date.date()))
             
             if not hist_df.empty:
+                logger.info(f"HISTORIAL: {len(hist_df)} números recuperados de la base de datos")
                 for _, row in hist_df.iterrows():
                     e164 = row['e164']
                     if e164 not in stats:
@@ -537,6 +546,7 @@ def analyze_cdr_chunked(
         # Record analysis results in DB
         if run_id:
             complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path)
+            logger.info(f"DB: Ejecución de análisis {run_id} marcada como completada")
             
             # Prepare detailed results for DB
             db_results = []
@@ -564,6 +574,7 @@ def analyze_cdr_chunked(
                 })
             
             save_analysis_run_numbers(run_id, db_results)
+            logger.info(f"DB: {len(db_results)} resultados individuales guardados en analysis_run_numbers")
 
         summary = {
             'total_registros': total_rows,
