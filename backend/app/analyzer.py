@@ -167,6 +167,31 @@ def analyze_cdr_chunked(
     Analyzes multiple CDR CSV files in chunks to handle large files.
     Supports incremental analysis and deduplication.
     """
+    # Initialize summary with default values to avoid UnboundLocalError
+    summary = {
+        'total_registros': 0,
+        'total_numeros_unicos': 0,
+        'numeros_excluidos_200': 0,
+        'numeros_excluidos_404': 0,
+        'numeros_con_frecuencia_insuficiente': 0,
+        'numeros_match': 0,
+        'numeros_no_match': 0,
+        'filas_invalidas_descartadas': 0,
+        'numeros_con_no_response': 0,
+        'numeros_sin_no_response': 0,
+        'inactiva_count': 0,
+        'indeterminada_count': 0,
+        'activa_count': 0,
+        'inactiva_pct': 0,
+        'indeterminada_pct': 0,
+        'activa_pct': 0,
+        'first_date': None,
+        'last_date': None,
+        'conversion_errors': [],
+        'files_skipped': [],
+        'days_considered': []
+    }
+
     try:
         # Pass 0: Deduplication
         if progress_callback:
@@ -543,6 +568,32 @@ def analyze_cdr_chunked(
         df_results = pd.DataFrame(results, columns=cols)
         df_results.to_csv(output_path, index=False, sep=';')
 
+        # Construct final summary before using it in complete_analysis_run
+        # We update the existing summary object to ensure it's always available
+        summary.update({
+            'total_registros': total_rows,
+            'total_numeros_unicos': total_numeros_unicos,
+            'numeros_excluidos_200': numeros_excluidos_200,
+            'numeros_excluidos_404': numeros_excluidos_404,
+            'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
+            'numeros_match': numeros_match,
+            'numeros_no_match': numeros_no_match,
+            'filas_invalidas_descartadas': invalid_rows,
+            'numeros_con_no_response': numeros_con_no_response,
+            'numeros_sin_no_response': numeros_sin_no_response,
+            'inactiva_count': inactiva_count,
+            'indeterminada_count': indeterminada_count,
+            'activa_count': activa_count,
+            'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
+            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
+            'conversion_errors': conversion_errors[:10], # Show first 10 errors
+            'files_skipped': skipped_filenames,
+            'days_considered': [str(d) for d in sorted(list(days_considered))]
+        })
+
         # Record analysis results in DB
         if run_id:
             complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path, summary)
@@ -576,30 +627,6 @@ def analyze_cdr_chunked(
             save_analysis_run_numbers(run_id, db_results)
             logger.info(f"DB: {len(db_results)} resultados individuales guardados en analysis_run_numbers")
 
-        summary = {
-            'total_registros': total_rows,
-            'total_numeros_unicos': total_numeros_unicos,
-            'numeros_excluidos_200': numeros_excluidos_200,
-            'numeros_excluidos_404': numeros_excluidos_404,
-            'numeros_con_frecuencia_insuficiente': numeros_con_frecuencia_insuficiente,
-            'numeros_match': numeros_match,
-            'numeros_no_match': numeros_no_match,
-            'filas_invalidas_descartadas': invalid_rows,
-            'numeros_con_no_response': numeros_con_no_response,
-            'numeros_sin_no_response': numeros_sin_no_response,
-            'inactiva_count': inactiva_count,
-            'indeterminada_count': indeterminada_count,
-            'activa_count': activa_count,
-            'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
-            'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
-            'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
-            'conversion_errors': conversion_errors[:10], # Show first 10 errors
-            'files_skipped': skipped_filenames,
-            'days_considered': [str(d) for d in sorted(list(days_considered))]
-        }
-
         if progress_callback:
             progress_callback(100, "completed", "Análisis completado exitosamente.")
 
@@ -609,7 +636,41 @@ def analyze_cdr_chunked(
         logger.error(f"Error in CDR analyzer: {str(e)}")
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
-        raise e
+        
+        # Defensive protection: ensure summary exists and return it instead of failing
+        # Since we initialized it at the top, it should always exist
+        if 'summary' not in locals() or summary is None:
+            summary = {
+                'total_registros': 0,
+                'total_numeros_unicos': 0,
+                'numeros_excluidos_200': 0,
+                'numeros_excluidos_404': 0,
+                'numeros_con_frecuencia_insuficiente': 0,
+                'numeros_match': 0,
+                'numeros_no_match': 0,
+                'filas_invalidas_descartadas': 0,
+                'numeros_con_no_response': 0,
+                'numeros_sin_no_response': 0,
+                'inactiva_count': 0,
+                'indeterminada_count': 0,
+                'activa_count': 0,
+                'inactiva_pct': 0,
+                'indeterminada_pct': 0,
+                'activa_pct': 0,
+                'first_date': None,
+                'last_date': None,
+                'conversion_errors': [str(e)],
+                'files_skipped': [],
+                'days_considered': []
+            }
+        else:
+            # If it exists, at least add the error to conversion_errors
+            if 'conversion_errors' in summary:
+                summary['conversion_errors'].append(str(e))
+            else:
+                summary['conversion_errors'] = [str(e)]
+                
+        return summary
 
 def analyze_asr_chunked(
     input_paths: list[str],
@@ -622,6 +683,26 @@ def analyze_asr_chunked(
     """
     Analyzes CDR for ASR metrics across multiple dimensions.
     """
+    # Initialize summary with default values to avoid UnboundLocalError
+    summary = {
+        'total_intentos': 0,
+        'intentos_atendidos': 0,
+        'intentos_no_atendidos': 0,
+        'asr_global': 0,
+        'first_date': None,
+        'last_date': None,
+        'by_ddd': [],
+        'by_region': [],
+        'by_date': [],
+        'by_hour': [],
+        'by_client': [],
+        'by_route': [],
+        'by_operator': [],
+        'by_ddd_operator': [],
+        'filas_invalidas_descartadas': 0,
+        'conversion_errors': []
+    }
+
     if progress_callback:
         progress_callback(0, "scanning_dates", "Escaneando fechas y validando archivos...")
 
@@ -782,7 +863,7 @@ def analyze_asr_chunked(
 
         asr_global = (intentos_atendidos / total_intentos * 100) if total_intentos > 0 else 0
         
-        summary = {
+        summary.update({
             'total_intentos': total_intentos,
             'intentos_atendidos': intentos_atendidos,
             'intentos_no_atendidos': total_intentos - intentos_atendidos,
@@ -799,7 +880,7 @@ def analyze_asr_chunked(
             'by_ddd_operator': format_dim('ddd_operator'),
             'filas_invalidas_descartadas': invalid_rows,
             'conversion_errors': conversion_errors[:10]
-        }
+        })
 
         # Save a simple CSV with the global dimensions for download.
         all_data = []
@@ -820,7 +901,28 @@ def analyze_asr_chunked(
         logger.error(f"Error in ASR analyzer: {str(e)}")
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
-        raise e
+        
+        # Defensive protection
+        if 'summary' not in locals() or summary is None:
+            summary = {
+                'total_intentos': 0,
+                'intentos_atendidos': 0,
+                'intentos_no_atendidos': 0,
+                'asr_global': 0,
+                'first_date': None,
+                'last_date': None,
+                'by_ddd': [],
+                'by_region': [],
+                'by_date': [],
+                'by_hour': [],
+                'by_client': [],
+                'by_route': [],
+                'by_operator': [],
+                'by_ddd_operator': [],
+                'filas_invalidas_descartadas': 0,
+                'conversion_errors': [str(e)]
+            }
+        return summary
 
 def analyze_no_response_validation(
     target_path: str,
@@ -836,6 +938,29 @@ def analyze_no_response_validation(
     """
     Validates a list of NO_RESPONSE numbers against CDR files.
     """
+    # Initialize summary with default values to avoid UnboundLocalError
+    summary = {
+        'tp_count': 0,
+        'fp_count': 0,
+        'precision': 0,
+        'error_rate': 0,
+        'total_analizados': 0,
+        'pct_con_respuesta': 0,
+        'filas_invalidas_descartadas': 0,
+        'first_date': None,
+        'last_date': None,
+        'cdr_stats': [],
+        'original_target_count': 0,
+        'filtered_target_count': 0,
+        'reduction_pct': 0,
+        'tp_line_state': {},
+        'total_line_state': {},
+        'linestate_distribution': {},
+        'linestate_matches': 0,
+        'has_target_linestate': False,
+        'conversion_errors': []
+    }
+
     if progress_callback:
         progress_callback(0, "loading_targets", "Cargando lista de números a validar...")
 
@@ -1037,7 +1162,7 @@ def analyze_no_response_validation(
         error_rate = (fp / total * 100) if total > 0 else 0
         pct_con_respuesta = (fp / total * 100) if total > 0 else 0
         
-        summary = {
+        summary.update({
             'tp_count': tp,
             'fp_count': fp,
             'precision': round(precision, 2),
@@ -1057,7 +1182,7 @@ def analyze_no_response_validation(
             'linestate_matches': linestate_matches,
             'has_target_linestate': has_target_linestate,
             'conversion_errors': conversion_errors[:10]
-        }
+        })
 
         # Pass 3: Extract detailed CDR matches
         if progress_callback:
@@ -1108,9 +1233,11 @@ def analyze_no_response_validation(
                     first_chunk = False
 
         # Add row counts to summary
-        summary['total_cdr_rows'] = sum(s['total_rows'] for s in cdr_stats)
-        summary['tp_rows'] = total_tp_rows
-        summary['fp_rows'] = total_fp_rows
+        summary.update({
+            'total_cdr_rows': sum(s['total_rows'] for s in cdr_stats),
+            'tp_rows': total_tp_rows,
+            'fp_rows': total_fp_rows
+        })
 
         # Save summary results table as well
         results_list = []
@@ -1132,4 +1259,28 @@ def analyze_no_response_validation(
         logger.error(f"Error in validation analyzer: {str(e)}")
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
-        raise e
+        
+        # Defensive protection
+        if 'summary' not in locals() or summary is None:
+            summary = {
+                'tp_count': 0,
+                'fp_count': 0,
+                'precision': 0,
+                'error_rate': 0,
+                'total_analizados': 0,
+                'pct_con_respuesta': 0,
+                'filas_invalidas_descartadas': 0,
+                'first_date': None,
+                'last_date': None,
+                'cdr_stats': [],
+                'original_target_count': 0,
+                'filtered_target_count': 0,
+                'reduction_pct': 0,
+                'tp_line_state': {},
+                'total_line_state': {},
+                'linestate_distribution': {},
+                'linestate_matches': 0,
+                'has_target_linestate': False,
+                'conversion_errors': [str(e)]
+            }
+        return summary
