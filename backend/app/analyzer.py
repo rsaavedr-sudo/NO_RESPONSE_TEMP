@@ -588,7 +588,16 @@ def analyze_cdr_chunked(
         detailed_file_exists = False
         
         if not target_numbers_set:
-            logger.info("No se detectaron números NO_RESPONSE_TEMP, omitiendo generación de detalle.")
+            logger.info("No se detectaron números NO_RESPONSE_TEMP. Creando archivo de detalle vacío.")
+            # Create an empty CSV with headers if possible, or just an empty file
+            # We use the columns from the first valid input file if available
+            try:
+                if valid_input_paths:
+                    sample_df = pd.read_csv(valid_input_paths[0][0], sep=';', nrows=0)
+                    sample_df.to_csv(detailed_output_path, index=False, sep=';')
+                    detailed_file_exists = True
+            except Exception as e:
+                logger.error(f"Error al crear archivo de detalle vacío: {e}")
         else:
             for input_path, filename in valid_input_paths:
                 for chunk in pd.read_csv(
@@ -603,16 +612,26 @@ def analyze_cdr_chunked(
                     # Filter chunk to only include target numbers
                     matched_chunk = chunk[chunk['e164'].isin(target_numbers_set)].copy()
                     
-                    if not matched_chunk.empty:
+                    if first_chunk_detailed:
+                        # Always create the file on the first chunk attempt
                         matched_chunk.to_csv(
                             detailed_output_path, 
-                            mode='a' if not first_chunk_detailed else 'w', 
+                            mode='w', 
                             index=False, 
                             sep=';',
-                            header=first_chunk_detailed
+                            header=True
                         )
                         first_chunk_detailed = False
                         detailed_file_exists = True
+                    elif not matched_chunk.empty:
+                        # Append only if there are records
+                        matched_chunk.to_csv(
+                            detailed_output_path, 
+                            mode='a', 
+                            index=False, 
+                            sep=';',
+                            header=False
+                        )
 
         # Construct final summary before using it in complete_analysis_run
         # We update the existing summary object to ensure it's always available
