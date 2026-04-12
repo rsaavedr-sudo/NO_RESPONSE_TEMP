@@ -396,11 +396,16 @@ def set_job_result(job_id: str, stats: Dict[str, Any], result_path: str):
             jobs[job_id]["days_considered"] = stats["days_considered"]
 
         # Check if detailed result exists
-        detailed_path = result_path.replace(".csv", "_detailed.csv")
-        if os.path.exists(detailed_path):
-            jobs[job_id]["detailed_result_path"] = detailed_path
-        else:
-            jobs[job_id]["detailed_result_path"] = None
+        detailed_path = stats.get("detailed_result_path")
+        if not detailed_path:
+            # Fallback to inference with new naming convention: detailed_{job_id}.csv
+            results_dir = os.path.dirname(result_path)
+            detailed_filename = os.path.basename(result_path).replace("result_", "detailed_")
+            inferred = os.path.join(results_dir, detailed_filename)
+            if os.path.exists(inferred):
+                detailed_path = inferred
+        
+        jobs[job_id]["detailed_result_path"] = detailed_path
 
         jobs[job_id]["progress_percent"] = 100
         jobs[job_id]["stage"] = "completed"

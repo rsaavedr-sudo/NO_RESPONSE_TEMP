@@ -86,6 +86,7 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             completed_at DATETIME,
             result_file_path TEXT,
+            detailed_result_path TEXT,
             notes TEXT
         )
     """)
@@ -116,8 +117,13 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_number_date ON number_daily_summary (number_e164, summary_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_run_numbers (analysis_run_id)")
     
-    # Legacy tables (keep for compatibility during migration if needed, or just remove if we want a clean start)
-    # For this task, we'll stick to the requested ones.
+    # Migration: Add detailed_result_path to analysis_runs if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE analysis_runs ADD COLUMN detailed_result_path TEXT")
+        logger.info("DB: Columna detailed_result_path añadida a analysis_runs")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
     
     conn.commit()
     conn.close()
@@ -258,7 +264,7 @@ def create_analysis_run(job_id: str, analysis_type: str, period_start: str, peri
     conn.close()
     return run_id
 
-def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, result_path: str, summary: Dict[str, Any] = None):
+def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, result_path: str, summary: Dict[str, Any] = None, detailed_result_path: str = None):
     """Completes an analysis run record."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -267,9 +273,9 @@ def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, 
     cursor.execute("""
         UPDATE analysis_runs 
         SET status = 'completed', completed_at = ?, total_numbers_analyzed = ?, 
-            total_numbers_flagged = ?, result_file_path = ?, summary_json = ?
+            total_numbers_flagged = ?, result_file_path = ?, detailed_result_path = ?, summary_json = ?
         WHERE id = ?
-    """, (now, total_analyzed, total_flagged, result_path, summary_json, run_id))
+    """, (now, total_analyzed, total_flagged, result_path, detailed_result_path, summary_json, run_id))
     conn.commit()
     conn.close()
 

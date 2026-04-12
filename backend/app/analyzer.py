@@ -578,9 +578,14 @@ def analyze_cdr_chunked(
         if progress_callback:
             progress_callback(95, "saving_details", "Generando detalle de registros para números detectados...")
 
-        detailed_output_path = output_path.replace(".csv", "_detailed.csv")
+        # Use the requested naming convention: detailed_{job_id}.csv
+        results_dir = os.path.dirname(output_path)
+        detailed_filename = os.path.basename(output_path).replace("result_", "detailed_")
+        detailed_output_path = os.path.join(results_dir, detailed_filename)
+        
         first_chunk_detailed = True
         target_numbers_set = set(df_results['e164'].unique())
+        detailed_file_exists = False
         
         if not target_numbers_set:
             logger.info("No se detectaron números NO_RESPONSE_TEMP, omitiendo generación de detalle.")
@@ -607,10 +612,12 @@ def analyze_cdr_chunked(
                             header=first_chunk_detailed
                         )
                         first_chunk_detailed = False
+                        detailed_file_exists = True
 
         # Construct final summary before using it in complete_analysis_run
         # We update the existing summary object to ensure it's always available
         summary.update({
+            'detailed_result_path': detailed_output_path if detailed_file_exists else None,
             # Spanish keys for frontend compatibility
             'total_registros': total_rows,
             'total_numeros_unicos': total_numeros_unicos,
@@ -650,7 +657,10 @@ def analyze_cdr_chunked(
 
         # Record analysis results in DB
         if run_id:
-            complete_analysis_run(run_id, total_numeros_unicos, len(results), output_path, summary)
+            complete_analysis_run(
+                run_id, total_numeros_unicos, len(results), output_path, summary,
+                detailed_result_path=detailed_output_path if detailed_file_exists else None
+            )
             logger.info(f"DB: Ejecución de análisis {run_id} marcada como completada")
             
             # Prepare detailed results for DB

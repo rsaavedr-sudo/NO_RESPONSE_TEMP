@@ -255,9 +255,11 @@ def format_job_status(job: dict):
         
         # Determine detailed result path
         detailed_path = safe_job.get("detailed_result_path")
-        if not detailed_path and safe_job.get("result_path") and safe_job.get("analysis_type") == "no_response":
-            # Try to infer it
-            inferred = safe_job["result_path"].replace(".csv", "_detailed.csv")
+        if not detailed_path and safe_job.get("result_path"):
+            # Try to infer it with new naming convention: detailed_{job_id}.csv
+            results_dir = os.path.dirname(safe_job["result_path"])
+            detailed_filename = os.path.basename(safe_job["result_path"]).replace("result_", "detailed_")
+            inferred = os.path.join(results_dir, detailed_filename)
             if os.path.exists(inferred):
                 detailed_path = inferred
 
@@ -301,15 +303,24 @@ async def download_detailed_result(job_id: str):
         if job:
             # Normalize keys
             job["result_path"] = job.get("result_file_path")
-            job["detailed_result_path"] = job["result_path"].replace(".csv", "_detailed.csv") if job.get("result_path") else None
+            job["detailed_result_path"] = job.get("detailed_result_path")
+            
+            if not job["detailed_result_path"] and job["result_path"]:
+                results_dir = os.path.dirname(job["result_path"])
+                detailed_filename = os.path.basename(job["result_path"]).replace("result_", "detailed_")
+                inferred = os.path.join(results_dir, detailed_filename)
+                if os.path.exists(inferred):
+                    job["detailed_result_path"] = inferred
     
     if not job or job["status"] != "completed":
         raise HTTPException(status_code=404, detail="Result not found or job not completed")
     
     detailed_path = job.get("detailed_result_path")
     if not detailed_path and job.get("result_path"):
-        # Try to infer it
-        inferred = job["result_path"].replace(".csv", "_detailed.csv")
+        # Try to infer it with new naming convention: detailed_{job_id}.csv
+        results_dir = os.path.dirname(job["result_path"])
+        detailed_filename = os.path.basename(job["result_path"]).replace("result_", "detailed_")
+        inferred = os.path.join(results_dir, detailed_filename)
         if os.path.exists(inferred):
             detailed_path = inferred
             
@@ -396,9 +407,11 @@ async def list_history():
         
         # Determine detailed result path
         detailed_path = safe_job.get("detailed_result_path")
-        if not detailed_path and safe_job.get("result_path") and safe_job.get("analysis_type") == "no_response":
-            # Try to infer it
-            inferred = safe_job["result_path"].replace(".csv", "_detailed.csv")
+        if not detailed_path and safe_job.get("result_path"):
+            # Try to infer it with new naming convention: detailed_{job_id}.csv
+            results_dir = os.path.dirname(safe_job["result_path"])
+            detailed_filename = os.path.basename(safe_job["result_path"]).replace("result_", "detailed_")
+            inferred = os.path.join(results_dir, detailed_filename)
             if os.path.exists(inferred):
                 detailed_path = inferred
         
