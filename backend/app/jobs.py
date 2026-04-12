@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, timezone
 from .analyzer import analyze_cdr_chunked, analyze_asr_chunked, analyze_no_response_validation
-from .utils import to_json_safe
+from .utils import to_json_safe, normalize_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -65,17 +65,17 @@ def load_history():
                 if job_id:
                     # Convert ISO string back to datetime
                     if job_data.get("created_at"):
-                        job_data["created_at"] = datetime.fromisoformat(job_data["created_at"].replace('Z', '+00:00'))
+                        job_data["created_at"] = normalize_datetime(job_data["created_at"])
                     if job_data.get("completed_at"):
-                        job_data["completed_at"] = datetime.fromisoformat(job_data["completed_at"].replace('Z', '+00:00'))
+                        job_data["completed_at"] = normalize_datetime(job_data["completed_at"])
                     if job_data.get("last_update"):
-                        job_data["last_update"] = datetime.fromisoformat(job_data["last_update"].replace('Z', '+00:00'))
+                        job_data["last_update"] = normalize_datetime(job_data["last_update"])
                     
                     # Convert logs timestamps back
                     if "logs" in job_data:
                         for log in job_data["logs"]:
                             if isinstance(log.get("timestamp"), str):
-                                log["timestamp"] = datetime.fromisoformat(log["timestamp"].replace('Z', '+00:00'))
+                                log["timestamp"] = normalize_datetime(log["timestamp"])
                     
                     jobs[job_id] = job_data
         except Exception as e:

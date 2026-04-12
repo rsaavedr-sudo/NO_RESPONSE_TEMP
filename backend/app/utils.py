@@ -1,6 +1,51 @@
 import numpy as np
 import pandas as pd
 from typing import Any
+from datetime import datetime, timezone
+
+def normalize_datetime(dt: Any) -> datetime:
+    """
+    Normalizes a datetime object or ISO string to a UTC-aware datetime.
+    """
+    if dt is None:
+        return datetime.now(timezone.utc)
+    
+    if isinstance(dt, str):
+        # Handle SQLite format (YYYY-MM-DD HH:MM:SS) or ISO format
+        # If it's SQLite format, it doesn't have 'T' or 'Z' or offset
+        s_dt = dt
+        if ' ' in s_dt and 'T' not in s_dt:
+            s_dt = s_dt.replace(' ', 'T')
+        
+        # fromisoformat handles +HH:MM but not 'Z' in some python versions
+        clean_dt = s_dt.replace('Z', '+00:00')
+        try:
+            res = datetime.fromisoformat(clean_dt)
+        except ValueError:
+            # Fallback for other formats
+            try:
+                res = datetime.strptime(clean_dt, "%Y-%m-%dT%H:%M:%S")
+            except ValueError:
+                try:
+                    res = datetime.strptime(clean_dt, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    # If all fails, return now
+                    return datetime.now(timezone.utc)
+    elif isinstance(dt, datetime):
+        res = dt
+    else:
+        # Try to convert to string and parse
+        try:
+            res = datetime.fromisoformat(str(dt).replace('Z', '+00:00'))
+        except:
+            return datetime.now(timezone.utc)
+        
+    if res.tzinfo is None:
+        res = res.replace(tzinfo=timezone.utc)
+    else:
+        res = res.astimezone(timezone.utc)
+        
+    return res
 
 def to_json_safe(obj: Any) -> Any:
     """

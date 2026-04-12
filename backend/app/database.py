@@ -3,7 +3,7 @@ import os
 import logging
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any, Optional
@@ -262,7 +262,7 @@ def complete_analysis_run(run_id: int, total_analyzed: int, total_flagged: int, 
     """Completes an analysis run record."""
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.now().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     summary_json = json.dumps(to_json_safe(summary)) if summary else None
     cursor.execute("""
         UPDATE analysis_runs 

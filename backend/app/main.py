@@ -212,13 +212,9 @@ async def get_last_job_status(analysis_type: str):
             final_job = db_job
         else:
             # Compare created_at
-            mem_created = final_job["created_at"]
-            if isinstance(mem_created, str):
-                mem_created = datetime.fromisoformat(mem_created.replace('Z', '+00:00'))
-            
-            db_created = db_job["created_at"]
-            if isinstance(db_created, str):
-                db_created = datetime.fromisoformat(db_created.replace('Z', '+00:00'))
+            from .utils import normalize_datetime
+            mem_created = normalize_datetime(final_job["created_at"])
+            db_created = normalize_datetime(db_job["created_at"])
             
             if db_created > mem_created:
                 final_job = db_job
@@ -236,6 +232,15 @@ def format_job_status(job: dict):
         # Normalize result paths from DB if needed
         if "result_file_path" in safe_job and "result_path" not in safe_job:
             safe_job["result_path"] = safe_job["result_file_path"]
+        
+        # Normalize datetimes
+        from .utils import normalize_datetime
+        if safe_job.get("created_at"):
+            safe_job["created_at"] = normalize_datetime(safe_job["created_at"])
+        if safe_job.get("completed_at"):
+            safe_job["completed_at"] = normalize_datetime(safe_job["completed_at"])
+        if safe_job.get("last_update"):
+            safe_job["last_update"] = normalize_datetime(safe_job["last_update"])
         
         # Map stats to Pydantic model if exists
         stats = None
@@ -369,6 +374,15 @@ async def list_history():
         # Normalize result paths from DB if needed
         if "result_file_path" in safe_job and "result_path" not in safe_job:
             safe_job["result_path"] = safe_job["result_file_path"]
+            
+        # Normalize datetimes
+        from .utils import normalize_datetime
+        if safe_job.get("created_at"):
+            safe_job["created_at"] = normalize_datetime(safe_job["created_at"])
+        if safe_job.get("completed_at"):
+            safe_job["completed_at"] = normalize_datetime(safe_job["completed_at"])
+        if safe_job.get("last_update"):
+            safe_job["last_update"] = normalize_datetime(safe_job["last_update"])
             
         stats = None
         if safe_job.get("stats"):
