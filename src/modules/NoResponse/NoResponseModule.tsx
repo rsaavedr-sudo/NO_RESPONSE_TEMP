@@ -15,6 +15,7 @@ import { DuplicateFilesModal } from '../../components/DuplicateFilesModal';
 import { 
   startAnalysis, 
   getDownloadUrl, 
+  getDetailedDownloadUrl,
   getJobStatus, 
   cancelAnalysis, 
   getLastJobStatus,
@@ -300,7 +301,7 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
                     </div>
                   )}
                   
-                  <div className="mt-6 flex flex-wrap gap-3">
+                    <div className="mt-6 flex flex-wrap gap-3">
                     <button 
                       onClick={() => setShowLogs(true)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-gray-800 transition-all active:scale-95"
@@ -310,10 +311,19 @@ export const NoResponseModule: React.FC<NoResponseModuleProps> = ({ log, setLast
                     </button>
                     
                     {jobStatus.status === 'completed' && jobStatus.job_id !== 'pending' && (
-                      <DownloadButton 
-                        url={jobStatus.result_url ? `${import.meta.env.VITE_API_BASE_URL || ''}${jobStatus.result_url}` : getDownloadUrl(jobStatus.job_id)} 
-                        filename={`analisis_cdr_${jobStatus.job_id}.csv`} 
-                      />
+                      <div className="w-full space-y-3">
+                        <DownloadButton 
+                          url={getDownloadUrl(jobStatus.job_id)} 
+                          filename={`analisis_cdr_${jobStatus.job_id}.csv`} 
+                        />
+                        {jobStatus.detailed_result_url && (
+                          <DownloadButton 
+                            url={getDetailedDownloadUrl(jobStatus.job_id)} 
+                            filename={`detalle_cdr_${jobStatus.job_id}.csv`}
+                            variant="secondary"
+                          />
+                        )}
+                      </div>
                     )}
                   </div>
                 </motion.div>

@@ -424,6 +424,12 @@ def analyze_cdr_chunked(
             
             if not hist_df.empty:
                 logger.info(f"HISTORIAL: {len(hist_df)} números recuperados de la base de datos")
+                
+                # Update total_rows with historical attempts if this is a history-only run or to reflect full scope
+                # We only add if they are not already counted in total_rows (which comes from Pass 1)
+                # Since Pass 1 only counts NEW files, adding historical attempts is correct for the "Total Registros" scope.
+                total_rows += int(hist_df['total_intentos'].sum())
+                
                 for _, row in hist_df.iterrows():
                     e164 = row['e164']
                     if e164 not in stats:
@@ -571,6 +577,7 @@ def analyze_cdr_chunked(
         # Construct final summary before using it in complete_analysis_run
         # We update the existing summary object to ensure it's always available
         summary.update({
+            # Spanish keys for frontend compatibility
             'total_registros': total_rows,
             'total_numeros_unicos': total_numeros_unicos,
             'numeros_excluidos_200': numeros_excluidos_200,
@@ -587,6 +594,19 @@ def analyze_cdr_chunked(
             'inactiva_pct': round((inactiva_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'indeterminada_pct': round((indeterminada_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
             'activa_pct': round((activa_count / numeros_match * 100), 2) if numeros_match > 0 else 0,
+            
+            # English keys as requested by user
+            'total_records': total_rows,
+            'unique_numbers': total_numeros_unicos,
+            'no_response_matches': numeros_match,
+            'no_match': numeros_no_match,
+            'excluded_200': numeros_excluidos_200,
+            'excluded_pct404': numeros_excluidos_404,
+            'insufficient_frequency': numeros_con_frecuencia_insuficiente,
+            'invalid_rows': invalid_rows,
+            'con_no_response': numeros_con_no_response,
+            'sin_no_response': numeros_sin_no_response,
+            
             'first_date': global_first_date.strftime('%Y-%m-%d') if global_first_date else None,
             'last_date': global_last_date.strftime('%Y-%m-%d') if global_last_date else None,
             'conversion_errors': conversion_errors[:10], # Show first 10 errors

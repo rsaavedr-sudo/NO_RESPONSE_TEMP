@@ -233,6 +233,10 @@ def format_job_status(job: dict):
         # Sanitize job data for JSON serialization
         safe_job = to_json_safe(job)
         
+        # Normalize result paths from DB if needed
+        if "result_file_path" in safe_job and "result_path" not in safe_job:
+            safe_job["result_path"] = safe_job["result_file_path"]
+        
         # Map stats to Pydantic model if exists
         stats = None
         if safe_job.get("stats"):
@@ -244,6 +248,14 @@ def format_job_status(job: dict):
             except:
                 pass
         
+        # Determine detailed result path
+        detailed_path = safe_job.get("detailed_result_path")
+        if not detailed_path and safe_job.get("result_path") and safe_job.get("analysis_type") == "no_response":
+            # Try to infer it
+            inferred = safe_job["result_path"].replace(".csv", "_detailed.csv")
+            if os.path.exists(inferred):
+                detailed_path = inferred
+
         return JobStatus(
             job_id=safe_job["job_id"],
             status=safe_job["status"],
@@ -253,7 +265,7 @@ def format_job_status(job: dict):
             message=safe_job.get("message", "Completado" if safe_job["status"] == "completed" else ""),
             stats=stats,
             result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if detailed_path or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
             error=safe_job.get("error"),
             processed_records=safe_job.get("processed_records") or safe_job.get("total_numbers_analyzed"),
             use_history=safe_job.get("use_history", True),
@@ -275,10 +287,27 @@ async def download_detailed_result(job_id: str):
     Downloads the detailed result CSV for a completed job.
     """
     job = get_job(job_id)
+    
+    # If not in memory, check DB
+    if not job:
+        from .database import get_analysis_runs_history
+        db_history = get_analysis_runs_history()
+        job = next((j for j in db_history if j["job_id"] == job_id), None)
+        if job:
+            # Normalize keys
+            job["result_path"] = job.get("result_file_path")
+            job["detailed_result_path"] = job["result_path"].replace(".csv", "_detailed.csv") if job.get("result_path") else None
+    
     if not job or job["status"] != "completed":
         raise HTTPException(status_code=404, detail="Result not found or job not completed")
     
     detailed_path = job.get("detailed_result_path")
+    if not detailed_path and job.get("result_path"):
+        # Try to infer it
+        inferred = job["result_path"].replace(".csv", "_detailed.csv")
+        if os.path.exists(inferred):
+            detailed_path = inferred
+            
     if not detailed_path or not os.path.exists(detailed_path):
         raise HTTPException(status_code=404, detail="Detailed result file missing")
     
@@ -336,6 +365,11 @@ async def list_history():
     
     def format_job(job_data):
         safe_job = to_json_safe(job_data)
+        
+        # Normalize result paths from DB if needed
+        if "result_file_path" in safe_job and "result_path" not in safe_job:
+            safe_job["result_path"] = safe_job["result_file_path"]
+            
         stats = None
         if safe_job.get("stats"):
             stats = AnalysisStats(**safe_job["stats"])
@@ -346,6 +380,14 @@ async def list_history():
             except:
                 pass
         
+        # Determine detailed result path
+        detailed_path = safe_job.get("detailed_result_path")
+        if not detailed_path and safe_job.get("result_path") and safe_job.get("analysis_type") == "no_response":
+            # Try to infer it
+            inferred = safe_job["result_path"].replace(".csv", "_detailed.csv")
+            if os.path.exists(inferred):
+                detailed_path = inferred
+        
         return JobStatus(
             job_id=safe_job["job_id"],
             status=safe_job["status"],
@@ -355,7 +397,7 @@ async def list_history():
             message=safe_job.get("message", "Completado" if safe_job["status"] == "completed" else ""),
             stats=stats,
             result_url=f"/api/download/{safe_job['job_id']}" if safe_job["status"] == "completed" else None,
-            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if safe_job.get("detailed_result_path") or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
+            detailed_result_url=f"/api/download_detailed/{safe_job['job_id']}" if detailed_path or (safe_job["status"] == "completed" and safe_job.get("analysis_type") == "no_response") else None,
             error=safe_job.get("error"),
             processed_records=safe_job.get("processed_records") or safe_job.get("total_numbers_analyzed"),
             logs=safe_job.get("logs", []),
@@ -549,6 +591,16 @@ async def download_result(job_id: str):
     Downloads the result CSV for a completed job.
     """
     job = get_job(job_id)
+    
+    # If not in memory, check DB
+    if not job:
+        from .database import get_analysis_runs_history
+        db_history = get_analysis_runs_history()
+        job = next((j for j in db_history if j["job_id"] == job_id), None)
+        if job:
+            # Normalize keys
+            job["result_path"] = job.get("result_file_path")
+    
     if not job or job["status"] != "completed":
         raise HTTPException(status_code=404, detail="Result not found or job not completed")
     

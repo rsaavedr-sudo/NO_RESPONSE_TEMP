@@ -2,10 +2,12 @@ import sqlite3
 import os
 import logging
 import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any, Optional
+from .utils import to_json_safe
 
 logger = logging.getLogger(__name__)
 
