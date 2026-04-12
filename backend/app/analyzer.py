@@ -574,6 +574,40 @@ def analyze_cdr_chunked(
         df_results = pd.DataFrame(results, columns=cols)
         df_results.to_csv(output_path, index=False, sep=';')
 
+        # Pass 3: Extract detailed CDR matches for NO_RESPONSE_TEMP
+        if progress_callback:
+            progress_callback(95, "saving_details", "Generando detalle de registros para números detectados...")
+
+        detailed_output_path = output_path.replace(".csv", "_detailed.csv")
+        first_chunk_detailed = True
+        target_numbers_set = set(df_results['e164'].unique())
+        
+        if not target_numbers_set:
+            logger.info("No se detectaron números NO_RESPONSE_TEMP, omitiendo generación de detalle.")
+        else:
+            for input_path, filename in valid_input_paths:
+                for chunk in pd.read_csv(
+                    input_path, 
+                    sep=';', 
+                    dtype={'e164': str},
+                    chunksize=chunk_size,
+                    engine='c'
+                ):
+                    if check_cancellation: check_cancellation()
+                    
+                    # Filter chunk to only include target numbers
+                    matched_chunk = chunk[chunk['e164'].isin(target_numbers_set)].copy()
+                    
+                    if not matched_chunk.empty:
+                        matched_chunk.to_csv(
+                            detailed_output_path, 
+                            mode='a' if not first_chunk_detailed else 'w', 
+                            index=False, 
+                            sep=';',
+                            header=first_chunk_detailed
+                        )
+                        first_chunk_detailed = False
+
         # Construct final summary before using it in complete_analysis_run
         # We update the existing summary object to ensure it's always available
         summary.update({
