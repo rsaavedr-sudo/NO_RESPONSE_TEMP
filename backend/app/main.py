@@ -654,7 +654,7 @@ async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
             request.selected_sip_codes,
             RESULTS_DIR
         )
-        logger.info(f"Historical analysis completed. Run ID: {summary.get('run_id')}. Keys: {list(summary.keys())}")
+        logger.info(f"Historical analysis completed. Run ID: {summary.get('run_id')}")
         return HistoricalAnalysisResponse(**summary)
     except Exception as e:
         logger.error(f"Error in historical analysis: {e}")
@@ -692,6 +692,3 @@ async def get_historical_analysis_history():
     return get_historical_analysis_runs()
 
 app.include_router(api_router)
-
-# Optional: Root endpoint to serve frontend if needed
-# But we'll use the platform's Node.js server for that.

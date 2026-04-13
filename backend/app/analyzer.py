@@ -1425,7 +1425,7 @@ def run_historical_no_response_analysis(
                 summary["run_id"] = run_id
         except Exception as e:
             logger.error(f"Error saving empty historical analysis to DB: {e}")
-            
+
         return summary
     
     def process_row(row):
@@ -1538,5 +1538,5 @@ def run_historical_no_response_analysis(
             summary["run_id"] = run_id
     except Exception as e:
         logger.error(f"Error saving historical analysis to DB: {e}")
-    
+
     return summary
