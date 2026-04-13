@@ -1412,14 +1412,20 @@ def run_historical_no_response_analysis(
             "minimum_response": [],
             "stats": stats,
             "no_response_file": None,
-            "minimum_response_file": None
+            "minimum_response_file": None,
+            "run_id": 0
         }
         # Save to DB even if empty to get a run_id
-        run_id = save_historical_analysis_run(
-            start_date, end_date, max_sip_200, selected_sip_codes, 
-            summary, "", ""
-        )
-        summary["run_id"] = run_id
+        try:
+            run_id = save_historical_analysis_run(
+                start_date, end_date, max_sip_200, selected_sip_codes, 
+                summary, "", ""
+            )
+            if run_id:
+                summary["run_id"] = run_id
+        except Exception as e:
+            logger.error(f"Error saving empty historical analysis to DB: {e}")
+            
         return summary
     
     def process_row(row):
@@ -1519,7 +1525,7 @@ def run_historical_no_response_analysis(
         "stats": stats,
         "no_response_file": f"no_response_{job_id}.csv",
         "minimum_response_file": f"minimum_response_{job_id}.csv",
-        "run_id": 0 # Default
+        "run_id": 0
     }
     
     # Save to DB
@@ -1532,6 +1538,5 @@ def run_historical_no_response_analysis(
             summary["run_id"] = run_id
     except Exception as e:
         logger.error(f"Error saving historical analysis to DB: {e}")
-        # We still return the summary even if DB save fails
     
     return summary

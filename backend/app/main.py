@@ -655,7 +655,7 @@ async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
             RESULTS_DIR
         )
         logger.info(f"Historical analysis completed. Run ID: {summary.get('run_id')}. Keys: {list(summary.keys())}")
-        return summary
+        return HistoricalAnalysisResponse(**summary)
     except Exception as e:
         logger.error(f"Error in historical analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
