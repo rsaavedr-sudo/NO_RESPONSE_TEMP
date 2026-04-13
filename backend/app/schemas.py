@@ -156,4 +156,4 @@ class HistoricalAnalysisResponse(BaseModel):
     stats: Dict[str, int] = {}
     no_response_file: Optional[str] = None
     minimum_response_file: Optional[str] = None
-    run_id: int = 0
+    run_id: Any = 0

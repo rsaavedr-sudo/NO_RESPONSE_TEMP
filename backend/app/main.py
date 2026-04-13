@@ -654,14 +654,25 @@ async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
             request.selected_sip_codes,
             RESULTS_DIR
         )
-        logger.info(f"Historical analysis completed. Run ID: {summary.get('run_id')}")
-        return HistoricalAnalysisResponse(**summary)
+
+        return {
+            "run_id": str(uuid.uuid4()),
+            "no_response": summary.get("no_response", []),
+            "minimum_response": summary.get("minimum_response", []),
+            "stats": summary.get("stats", {
+                "total_numbers": 0,
+                "no_response_count": 0,
+                "minimum_response_count": 0
+            }),
+            "no_response_file": None,
+            "minimum_response_file": None
+        }
+
     except Exception as e:
-        logger.error(f"Error in historical analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/noresponse/historical-analysis/download/{run_id}/{file_type}")
-async def download_historical_csv(run_id: int, file_type: str):
+async def download_historical_csv(run_id: Any, file_type: str):
     """Downloads a CSV from a historical analysis run."""
     run = get_historical_analysis_run(run_id)
     if not run:
