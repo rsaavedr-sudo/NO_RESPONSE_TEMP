@@ -151,9 +151,9 @@ class HistoricalAnalysisRequest(BaseModel):
     selected_sip_codes: List[int]
 
 class HistoricalAnalysisResponse(BaseModel):
-    no_response: List[Dict[str, Any]]
-    minimum_response: List[Dict[str, Any]]
-    stats: Dict[str, int]
+    no_response: List[Dict[str, Any]] = []
+    minimum_response: List[Dict[str, Any]] = []
+    stats: Dict[str, int] = {}
     no_response_file: Optional[str] = None
     minimum_response_file: Optional[str] = None
-    run_id: int
+    run_id: int = 0
