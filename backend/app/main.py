@@ -7,9 +7,10 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sse_starlette.sse import EventSourceResponse
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 import json
+import pandas as pd
 
 from .schemas import (
     AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, 
@@ -264,7 +265,7 @@ def format_job_status(job: dict):
             inferred = os.path.join(results_dir, detailed_filename)
             if os.path.exists(inferred):
                 detailed_path = inferred
-
+ 
         return JobStatus(
             job_id=safe_job["job_id"],
             status=safe_job["status"],
