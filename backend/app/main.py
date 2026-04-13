@@ -24,9 +24,7 @@ from .jobs import (
 )
 from .utils import to_json_safe, parse_float
 from .database import get_processed_batches, get_batch_by_hash, get_file_hash, get_historical_analysis_run
-from .analyzer import (
-    run_historical_no_response_analysis
-)
+from .analyzer import run_historical_no_response_analysis # FIXED IMPORT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
