@@ -1402,15 +1402,25 @@ def run_historical_no_response_analysis(
     conn.close()
     
     if df.empty:
-        return {
+        stats = {
+            "total_numbers": 0,
+            "no_response_count": 0,
+            "minimum_response_count": 0
+        }
+        summary = {
             "no_response": [],
             "minimum_response": [],
-            "stats": {
-                "total_numbers": 0,
-                "no_response_count": 0,
-                "minimum_response_count": 0
-            }
+            "stats": stats,
+            "no_response_file": None,
+            "minimum_response_file": None
         }
+        # Save to DB even if empty to get a run_id
+        run_id = save_historical_analysis_run(
+            start_date, end_date, max_sip_200, selected_sip_codes, 
+            summary, "", ""
+        )
+        summary["run_id"] = run_id
+        return summary
     
     def process_row(row):
         sip_200 = int(row['total_200'])
