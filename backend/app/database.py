@@ -53,6 +53,9 @@ def init_db():
             total_480 INTEGER,
             total_487 INTEGER,
             total_503 INTEGER,
+            total_486 INTEGER,
+            total_500 INTEGER,
+            total_603 INTEGER,
             total_other_sip INTEGER,
             avg_tot_secs REAL,
             min_tot_secs REAL,
@@ -113,7 +116,22 @@ def init_db():
         )
     """)
     
-    # 5) INDICES
+    # 5) TABLE: historical_analysis_runs
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historical_analysis_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            start_date DATE,
+            end_date DATE,
+            max_sip_200 INTEGER,
+            selected_sip_codes TEXT,
+            result_summary TEXT,
+            no_response_file_path TEXT,
+            minimum_response_file_path TEXT
+        )
+    """)
+    
+    # 6) INDICES
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_number_date ON number_daily_summary (number_e164, summary_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_run_numbers (analysis_run_id)")
     
@@ -125,6 +143,14 @@ def init_db():
         # Column already exists
         pass
     
+    # Migration: Add new SIP columns to number_daily_summary if they don't exist
+    for code in [486, 500, 603]:
+        try:
+            cursor.execute(f"ALTER TABLE number_daily_summary ADD COLUMN total_{code} INTEGER DEFAULT 0")
+            logger.info(f"DB: Columna total_{code} añadida a number_daily_summary")
+        except sqlite3.OperationalError:
+            pass
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")
@@ -191,10 +217,11 @@ def save_daily_summary(df: pd.DataFrame, batch_id: int):
             cursor.execute("""
                 INSERT INTO number_daily_summary (
                     number_e164, summary_date, total_attempts, total_200ok, 
-                    total_404, total_480, total_487, total_503, total_other_sip, 
+                    total_404, total_480, total_487, total_503, 
+                    total_486, total_500, total_603, total_other_sip, 
                     avg_tot_secs, min_tot_secs, max_tot_secs, source_batch_id,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(number_e164, summary_date) DO UPDATE SET
                     total_attempts = total_attempts + excluded.total_attempts,
                     total_200ok = total_200ok + excluded.total_200ok,
@@ -202,6 +229,9 @@ def save_daily_summary(df: pd.DataFrame, batch_id: int):
                     total_480 = total_480 + excluded.total_480,
                     total_487 = total_487 + excluded.total_487,
                     total_503 = total_503 + excluded.total_503,
+                    total_486 = total_486 + excluded.total_486,
+                    total_500 = total_500 + excluded.total_500,
+                    total_603 = total_603 + excluded.total_603,
                     total_other_sip = total_other_sip + excluded.total_other_sip,
                     avg_tot_secs = (avg_tot_secs * total_attempts + excluded.avg_tot_secs * excluded.total_attempts) / (total_attempts + excluded.total_attempts),
                     max_tot_secs = MAX(max_tot_secs, excluded.max_tot_secs),
@@ -211,6 +241,7 @@ def save_daily_summary(df: pd.DataFrame, batch_id: int):
             """, (
                 row['e164'], row['date'], row['total_intentos'], row['total_200ok'], 
                 row['total_404'], row['total_480'], row['total_487'], row['total_503'], 
+                row.get('total_486', 0), row.get('total_500', 0), row.get('total_603', 0),
                 row['otros_sip_codes'], row['total_secs'] / row['total_intentos'] if row['total_intentos'] > 0 else 0,
                 row['min_secs'], row['max_secs'], batch_id, now, now
             ))
@@ -324,6 +355,46 @@ def get_analysis_runs_history() -> List[Dict[str, Any]]:
     for row in rows:
         history.append(dict(row))
     return history
+
+def save_historical_analysis_run(start_date: str, end_date: str, max_sip_200: int, selected_sip_codes: List[int], summary: Dict[str, Any], no_response_path: str, minimum_response_path: str) -> int:
+    """Saves a historical analysis run to the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    selected_sip_json = json.dumps(selected_sip_codes)
+    summary_json = json.dumps(to_json_safe(summary))
+    
+    cursor.execute("""
+        INSERT INTO historical_analysis_runs (
+            start_date, end_date, max_sip_200, selected_sip_codes, 
+            result_summary, no_response_file_path, minimum_response_file_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (start_date, end_date, max_sip_200, selected_sip_json, summary_json, no_response_path, minimum_response_path))
+    
+    run_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+def get_historical_analysis_runs() -> List[Dict[str, Any]]:
+    """Retrieves all historical analysis runs."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM historical_analysis_runs ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_historical_analysis_run(run_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieves a specific historical analysis run."""
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM historical_analysis_runs WHERE id = ?", (run_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 # Initialize on import
 init_db()

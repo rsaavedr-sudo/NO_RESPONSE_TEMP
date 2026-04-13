@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Sidebar, ModuleType } from './components/Sidebar';
 import { NoResponseModule } from './modules/NoResponse/NoResponseModule';
+import { HistoricalNoResponseModule } from './modules/NoResponse/HistoricalNoResponseModule';
 import { ASRModule } from './modules/ASR/AsrModule';
 import { NoResponseValidationModule } from './modules/NoResponse/NoResponseValidationModule';
 import { MaintenanceModule } from './modules/Maintenance/MaintenanceModule';
@@ -36,6 +37,8 @@ const App: React.FC = () => {
     switch (activeModule) {
       case 'no_response':
         return <NoResponseModule log={log} setLastEndpoint={setLastEndpoint} />;
+      case 'historical_no_response':
+        return <HistoricalNoResponseModule log={log} />;
       case 'no_response_validation':
         return <NoResponseValidationModule log={log} setLastEndpoint={setLastEndpoint} />;
       case 'asr':

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, BarChart2, Activity, PieChart, Settings, ShieldCheck, Target, Trash2, History } from 'lucide-react';
+import { Home, BarChart2, Activity, PieChart, Settings, ShieldCheck, Target, Trash2, History, Database } from 'lucide-react';
 
-export type ModuleType = 'no_response' | 'asr' | 'no_response_validation' | 'acd' | 'seizure' | 'amd' | 'maintenance' | 'history';
+export type ModuleType = 'no_response' | 'asr' | 'no_response_validation' | 'historical_no_response' | 'acd' | 'seizure' | 'amd' | 'maintenance' | 'history';
 
 interface SidebarProps {
   activeModule: ModuleType;
@@ -11,6 +11,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeModule, onModuleChange }) => {
   const menuItems = [
     { id: 'no_response' as ModuleType, label: 'NO_RESPONSE Analysis', icon: Home },
+    { id: 'historical_no_response' as ModuleType, label: 'Historical NO_RESPONSE', icon: Database },
     { id: 'no_response_validation' as ModuleType, label: 'NO_RESPONSE Validation', icon: ShieldCheck },
     { id: 'asr' as ModuleType, label: 'ASR Analysis', icon: BarChart2 },
     { id: 'history' as ModuleType, label: 'Historial de Análisis', icon: History },

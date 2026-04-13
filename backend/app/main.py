@@ -14,7 +14,8 @@ import json
 from .schemas import (
     AnalyzeResponse, JobStatus, AnalysisStats, SystemStats, 
     CleanupRequest, CleanupResponse, StorageStats,
-    ProcessedBatch, DuplicateCheckResponse, DuplicateCheckResult
+    ProcessedBatch, DuplicateCheckResponse, DuplicateCheckResult,
+    HistoricalAnalysisRequest, HistoricalAnalysisResponse
 )
 from .jobs import (
     create_job, run_analysis_task, get_job, get_last_job, 
@@ -22,7 +23,11 @@ from .jobs import (
     get_system_stats, cleanup_system, auto_cleanup, get_history, delete_job
 )
 from .utils import to_json_safe, parse_float
-from .database import get_processed_batches, get_batch_by_hash, get_file_hash
+from .database import get_processed_batches, get_batch_by_hash, get_file_hash, get_historical_analysis_run
+from .analyzer import (
+    analyze_cdr_chunked, analyze_asr_chunked, validate_model_chunked,
+    run_historical_no_response_analysis
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -640,6 +645,53 @@ async def download_result(job_id: str):
         filename=f"analisis_cdr_{job_id}.csv",
         media_type="text/csv"
     )
+
+@api_router.post("/noresponse/historical-analysis", response_model=HistoricalAnalysisResponse)
+async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
+    """Executes a historical NO_RESPONSE analysis."""
+    try:
+        summary = run_historical_no_response_analysis(
+            request.start_date,
+            request.end_date,
+            request.max_sip_200,
+            request.selected_sip_codes,
+            RESULTS_DIR
+        )
+        return summary
+    except Exception as e:
+        logger.error(f"Error in historical analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/noresponse/historical-analysis/download/{run_id}/{file_type}")
+async def download_historical_csv(run_id: int, file_type: str):
+    """Downloads a CSV from a historical analysis run."""
+    run = get_historical_analysis_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Analysis run not found")
+    
+    if file_type == "no_response":
+        path = run["no_response_file_path"]
+        filename = "no_response.csv"
+    elif file_type == "minimum_response":
+        path = run["minimum_response_file_path"]
+        filename = "minimum_response.csv"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+    
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path, 
+        media_type="text/csv", 
+        filename=filename
+    )
+
+@api_router.get("/noresponse/historical-analysis/history")
+async def get_historical_analysis_history():
+    """Returns the history of historical analysis runs."""
+    from .database import get_historical_analysis_runs
+    return get_historical_analysis_runs()
 
 app.include_router(api_router)
 

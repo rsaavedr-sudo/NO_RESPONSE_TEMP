@@ -143,3 +143,17 @@ class DuplicateCheckResult(BaseModel):
 class DuplicateCheckResponse(BaseModel):
     results: List[DuplicateCheckResult]
     has_duplicates: bool
+
+class HistoricalAnalysisRequest(BaseModel):
+    start_date: str
+    end_date: str
+    max_sip_200: int = 0
+    selected_sip_codes: List[int]
+
+class HistoricalAnalysisResponse(BaseModel):
+    no_response: List[Dict[str, Any]]
+    minimum_response: List[Dict[str, Any]]
+    stats: Dict[str, int]
+    no_response_file: str
+    minimum_response_file: str
+    run_id: int

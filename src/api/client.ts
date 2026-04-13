@@ -105,6 +105,25 @@ export const getDetailedDownloadUrl = (jobId: string) => {
   return `${API_BASE_URL}/download_detailed/${jobId}`;
 };
 
+export const runHistoricalAnalysis = async (params: {
+  start_date: string;
+  end_date: string;
+  max_sip_200: number;
+  selected_sip_codes: number[];
+}) => {
+  const response = await axios.post(`${API_BASE_URL}/noresponse/historical-analysis`, params);
+  return response.data;
+};
+
+export const getHistoricalAnalysisHistory = async () => {
+  const response = await axios.get(`${API_BASE_URL}/noresponse/historical-analysis/history`);
+  return response.data;
+};
+
+export const getHistoricalDownloadUrl = (runId: number, fileType: 'no_response' | 'minimum_response') => {
+  return `${API_BASE_URL}/noresponse/historical-analysis/download/${runId}/${fileType}`;
+};
+
 export const getLogsDownloadUrl = (jobId: string) => {
   return `${API_BASE_URL}/jobs/${jobId}/logs/download`;
 };

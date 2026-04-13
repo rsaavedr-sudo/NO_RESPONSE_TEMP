@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Dict, Any, Optional, List
 from .database import (
@@ -11,7 +11,10 @@ from .database import (
     get_file_hash,
     create_analysis_run,
     complete_analysis_run,
-    save_analysis_run_numbers
+    save_analysis_run_numbers,
+    get_historical_analysis_run,
+    save_historical_analysis_run,
+    get_connection
 )
 
 logger = logging.getLogger(__name__)
@@ -340,8 +343,11 @@ def analyze_cdr_chunked(
                     total_200ok=('sip_code', lambda x: (x == 200).sum()),
                     total_404=('sip_code', lambda x: (x == 404).sum()),
                     total_480=('sip_code', lambda x: (x == 480).sum()),
+                    total_486=('sip_code', lambda x: (x == 486).sum()),
                     total_487=('sip_code', lambda x: (x == 487).sum()),
+                    total_500=('sip_code', lambda x: (x == 500).sum()),
                     total_503=('sip_code', lambda x: (x == 503).sum()),
+                    total_603=('sip_code', lambda x: (x == 603).sum()),
                     total_secs=('tot_secs', 'sum'),
                     max_secs=('tot_secs', 'max'),
                     min_secs=('tot_secs', 'min')
@@ -351,19 +357,30 @@ def analyze_cdr_chunked(
                     key = (e164, str(d_only))
                     if key not in file_daily_stats:
                         file_daily_stats[key] = row.to_dict()
-                        file_daily_stats[key]['otros_sip_codes'] = row['total_intentos'] - (row['total_200ok'] + row['total_404'] + row['total_480'] + row['total_487'] + row['total_503'])
+                        file_daily_stats[key]['otros_sip_codes'] = row['total_intentos'] - (
+                            row['total_200ok'] + row['total_404'] + row['total_480'] + 
+                            row['total_486'] + row['total_487'] + row['total_500'] + 
+                            row['total_503'] + row['total_603']
+                        )
                     else:
                         s = file_daily_stats[key]
                         s['total_intentos'] += row['total_intentos']
                         s['total_200ok'] += row['total_200ok']
                         s['total_404'] += row['total_404']
                         s['total_480'] += row['total_480']
+                        s['total_486'] += row['total_486']
                         s['total_487'] += row['total_487']
+                        s['total_500'] += row['total_500']
                         s['total_503'] += row['total_503']
+                        s['total_603'] += row['total_603']
                         s['total_secs'] += row['total_secs']
                         s['max_secs'] = max(s['max_secs'], row['max_secs'])
                         s['min_secs'] = min(s['min_secs'], row['min_secs'])
-                        s['otros_sip_codes'] += row['total_intentos'] - (row['total_200ok'] + row['total_404'] + row['total_480'] + row['total_487'] + row['total_503'])
+                        s['otros_sip_codes'] += row['total_intentos'] - (
+                            row['total_200ok'] + row['total_404'] + row['total_480'] + 
+                            row['total_486'] + row['total_487'] + row['total_500'] + 
+                            row['total_503'] + row['total_603']
+                        )
 
                 # --- Current Analysis Aggregation (only if in window) ---
                 chunk_in_window = chunk[chunk['call_date'] >= start_date]
@@ -452,7 +469,7 @@ def analyze_cdr_chunked(
                     
                     # Rebuild SIP counts from DB (main codes + others)
                     new_sip_counts = {}
-                    for code in [200, 404, 480, 487, 503]:
+                    for code in [200, 404, 480, 486, 487, 500, 503, 603]:
                         col = 'total_200ok' if code == 200 else f'total_{code}'
                         if col in row and row[col] > 0:
                             new_sip_counts[code] = int(row[col])
@@ -1343,27 +1360,162 @@ def analyze_no_response_validation(
         if progress_callback:
             progress_callback(0, "failed", f"Error: {str(e)}")
         
-        # Defensive protection
-        if 'summary' not in locals() or summary is None:
-            summary = {
-                'tp_count': 0,
-                'fp_count': 0,
-                'precision': 0,
-                'error_rate': 0,
-                'total_analizados': 0,
-                'pct_con_respuesta': 0,
-                'filas_invalidas_descartadas': 0,
-                'first_date': None,
-                'last_date': None,
-                'cdr_stats': [],
-                'original_target_count': 0,
-                'filtered_target_count': 0,
-                'reduction_pct': 0,
-                'tp_line_state': {},
-                'total_line_state': {},
-                'linestate_distribution': {},
-                'linestate_matches': 0,
-                'has_target_linestate': False,
-                'conversion_errors': [str(e)]
-            }
         return summary
+
+def run_historical_no_response_analysis(
+    start_date: str, 
+    end_date: str, 
+    max_sip_200: int, 
+    selected_sip_codes: List[int],
+    results_dir: str
+) -> Dict[str, Any]:
+    """
+    Executes a historical NO_RESPONSE analysis using data from the database.
+    """
+    logger.info(f"HISTORICAL: Starting analysis from {start_date} to {end_date}")
+    
+    conn = get_connection()
+    # We'll build a query that aggregates by number
+    # We only consider the selected SIP codes + 200 (to count them)
+    
+    # Base columns for aggregation
+    sip_cols = [200, 404, 480, 486, 487, 500, 503, 603]
+    agg_parts = []
+    for code in sip_cols:
+        col_name = "total_200ok" if code == 200 else f"total_{code}"
+        agg_parts.append(f"SUM({col_name}) as total_{code}")
+    
+    query = f"""
+        SELECT 
+            number_e164 as e164,
+            SUM(total_attempts) as total_attempts,
+            {", ".join(agg_parts)},
+            SUM(total_other_sip) as total_other,
+            MIN(summary_date) as first_date,
+            MAX(summary_date) as last_date
+        FROM number_daily_summary
+        WHERE summary_date BETWEEN ? AND ?
+        GROUP BY number_e164
+    """
+    
+    df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+    conn.close()
+    
+    if df.empty:
+        return {
+            "no_response": [],
+            "minimum_response": [],
+            "stats": {
+                "total_numbers": 0,
+                "no_response_count": 0,
+                "minimum_response_count": 0
+            }
+        }
+    
+    def process_row(row):
+        sip_200 = int(row['total_200'])
+        
+        # Calculate attempts only for selected codes + 200
+        relevant_attempts = sip_200
+        sip_dist = {}
+        
+        for code in selected_sip_codes:
+            if code == 200: continue
+            count = int(row.get(f'total_{code}', 0))
+            relevant_attempts += count
+            if count > 0:
+                sip_dist[code] = count
+        
+        if relevant_attempts == 0:
+            return None
+            
+        # Distribution percentages
+        dist_pct = {}
+        for code, count in sip_dist.items():
+            dist_pct[f'pct_{code}'] = round((count / relevant_attempts * 100), 2)
+            
+        return {
+            "e164": row['e164'],
+            "intentos": relevant_attempts,
+            "sip_200": sip_200,
+            "first_date": row['first_date'],
+            "last_date": row['last_date'],
+            **dist_pct
+        }
+    
+    processed_data = []
+    for _, row in df.iterrows():
+        p = process_row(row)
+        if p:
+            processed_data.append(p)
+            
+    # Classification
+    no_response = []
+    minimum_response = []
+    
+    for item in processed_data:
+        sip_200 = item['sip_200']
+        if sip_200 == 0:
+            no_response.append(item)
+        elif sip_200 <= max_sip_200:
+            minimum_response.append(item)
+            
+    stats = {
+        "total_numbers": len(processed_data),
+        "no_response_count": len(no_response),
+        "minimum_response_count": len(minimum_response)
+    }
+    
+    # Export CSVs
+    os.makedirs(results_dir, exist_ok=True)
+    job_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    no_response_path = os.path.join(results_dir, f"no_response_{job_id}.csv")
+    min_response_path = os.path.join(results_dir, f"minimum_response_{job_id}.csv")
+    
+    def export_csv(data, path):
+        if not data:
+            # Create empty file with headers
+            pd.DataFrame(columns=["numero", "intentos", "sip_200"]).to_csv(path, index=False, sep=';')
+            return
+            
+        df_export = pd.DataFrame(data)
+        df_export = df_export.rename(columns={"e164": "numero"})
+        
+        # Ensure all pct columns are present and formatted
+        for code in selected_sip_codes:
+            if code == 200: continue
+            col = f'pct_{code}'
+            if col not in df_export.columns:
+                df_export[col] = 0
+        
+        # Reorder columns: numero, intentos, sip_200, first_date, last_date, pcts...
+        cols = ["numero", "intentos", "sip_200", "first_date", "last_date"]
+        pct_cols = [f'pct_{code}' for code in sorted(selected_sip_codes) if code != 200]
+        df_export = df_export[cols + pct_cols]
+        
+        # Format decimals with comma
+        for col in pct_cols:
+            df_export[col] = df_export[col].apply(lambda x: str(round(x, 1)).replace('.', ','))
+            
+        df_export.to_csv(path, index=False, sep=';', encoding='utf-8')
+
+    export_csv(no_response, no_response_path)
+    export_csv(minimum_response, min_response_path)
+    
+    summary = {
+        "no_response": no_response[:100], # Limit for JSON response
+        "minimum_response": minimum_response[:100],
+        "stats": stats,
+        "no_response_file": f"no_response_{job_id}.csv",
+        "minimum_response_file": f"minimum_response_{job_id}.csv"
+    }
+    
+    # Save to DB
+    run_id = save_historical_analysis_run(
+        start_date, end_date, max_sip_200, selected_sip_codes, 
+        summary, no_response_path, min_response_path
+    )
+    
+    summary["run_id"] = run_id
+    return summary

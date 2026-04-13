@@ -6,12 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-
-backend/data/
-backend/results/
-backend/venv/
-__pycache__/
-*.pyc
-
-NO_RESPONSE_TEMP/
-CDAnalyzer/
