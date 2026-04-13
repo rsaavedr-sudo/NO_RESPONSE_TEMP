@@ -1,0 +1,56 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import fs from "fs-extra";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3003;
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8001";
+
+async function startServer() {
+  // Proxy API requests to FastAPI backend (keep full /api prefix)
+  app.use(
+    createProxyMiddleware({
+      target: BACKEND_URL,
+      changeOrigin: true,
+      pathFilter: '/api/**',
+      proxyTimeout: 300000, // 5 minutes
+      timeout: 300000,      // 5 minutes
+      on: {
+        proxyReq: (proxyReq, req, res) => {
+          console.log(`[Proxy] ${req.method} ${req.url}`);
+        },
+        error: (err, req, res) => {
+          console.error(`[Proxy Error] ${err.message}`);
+        }
+      }
+    })
+  );
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      configFile: path.resolve(__dirname, "vite.config.mjs"),
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

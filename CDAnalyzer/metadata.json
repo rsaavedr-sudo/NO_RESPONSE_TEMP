@@ -1,0 +1,5 @@
+{
+  "name": "T-Zero CDR Analyzer v2",
+  "description": "Análisis masivo de CDR para detección de NO_RESPONSE_TEMP con arquitectura de microservicios.",
+  "requestFramePermissions": []
+}
