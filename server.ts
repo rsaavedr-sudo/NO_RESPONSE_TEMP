@@ -13,24 +13,28 @@ const PORT = 3000;
 const BACKEND_URL = process.env.BACKEND_URL || "";
 
 async function startServer() {
-  // Proxy API requests to FastAPI backend
-  app.use(
-    "/api",
-    createProxyMiddleware({
-      target: BACKEND_URL,
-      changeOrigin: true,
-      proxyTimeout: 300000, // 5 minutes
-      timeout: 300000,      // 5 minutes
-      on: {
-        proxyReq: (proxyReq, req, res) => {
-          console.log(`[Proxy] ${req.method} ${req.url}`);
-        },
-        error: (err, req, res) => {
-          console.error(`[Proxy Error] ${err.message}`);
+  // Proxy API requests to FastAPI backend if BACKEND_URL is provided
+  if (BACKEND_URL) {
+    app.use(
+      "/api",
+      createProxyMiddleware({
+        target: BACKEND_URL,
+        changeOrigin: true,
+        proxyTimeout: 300000, // 5 minutes
+        timeout: 300000,      // 5 minutes
+        on: {
+          proxyReq: (proxyReq, req, res) => {
+            console.log(`[Proxy] ${req.method} ${req.url}`);
+          },
+          error: (err, req, res) => {
+            console.error(`[Proxy Error] ${err.message}`);
+          }
         }
-      }
-    })
-  );
+      })
+    );
+  } else {
+    console.log("[Server] No BACKEND_URL provided. Running in unified local mode.");
+  }
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
