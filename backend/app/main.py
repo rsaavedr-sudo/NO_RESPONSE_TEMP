@@ -60,7 +60,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.4.1.2"}
+    return {"status": "ok", "version": "2.4.2.3"}
 
 @api_router.get("/maintenance/processed-batches", response_model=List[ProcessedBatch])
 async def list_processed_batches():
@@ -646,7 +646,7 @@ async def download_result(job_id: str):
 
 @api_router.post("/noresponse/historical-analysis", response_model=HistoricalAnalysisResponse)
 async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
-    \"\"\"Executes a historical NO_RESPONSE analysis.\"\"\"
+    """Executa uma análise histórica de NO_RESPONSE."""
     try:
         summary = run_historical_no_response_analysis(
             request.start_date,
@@ -674,7 +674,7 @@ async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
 
 @api_router.get("/noresponse/historical-analysis/download/{run_id}/{file_type}")
 async def download_historical_csv(run_id: Any, file_type: str):
-    \"\"\"Downloads a CSV from a historical analysis run.\"\"\"
+    """Downloads a CSV from a historical analysis run."""
     run = get_historical_analysis_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Analysis run not found")
@@ -699,7 +699,7 @@ async def download_historical_csv(run_id: Any, file_type: str):
 
 @api_router.get("/noresponse/historical-analysis/history")
 async def get_historical_analysis_history():
-    \"\"\"Returns the history of historical analysis runs.\"\"\"
+    """Returns the history of historical analysis runs."""
     from .database import get_historical_analysis_runs
     return get_historical_analysis_runs()
 
