@@ -54,6 +54,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-gray-900 font-sans selection:bg-blue-100 flex flex-col">
+      {/* Test div */}
+      <div className="fixed top-0 left-0 w-full bg-red-500 text-white text-[10px] py-1 text-center z-[9999]">
+        RENDER TEST - v2.4.2.2
+      </div>
+      
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
