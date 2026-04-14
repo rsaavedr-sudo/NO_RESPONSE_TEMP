@@ -223,15 +223,15 @@ export const HistoricalNoResponseModule: React.FC<HistoricalNoResponseModuleProp
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Números</p>
-                        <p className="text-2xl font-bold text-slate-900 mt-1">{results.stats.total_numbers}</p>
+                        <p className="text-2xl font-bold text-slate-900 mt-1">{(results.stats?.total_numbers || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm">
                         <p className="text-xs font-medium text-indigo-600 uppercase tracking-wider">NO_RESPONSE</p>
-                        <p className="text-2xl font-bold text-indigo-900 mt-1">{results.stats.no_response_count}</p>
+                        <p className="text-2xl font-bold text-indigo-900 mt-1">{(results.stats?.no_response_count || 0).toLocaleString()}</p>
                       </div>
                       <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 shadow-sm">
                         <p className="text-xs font-medium text-amber-600 uppercase tracking-wider">MINIMUM_RESPONSE</p>
-                        <p className="text-2xl font-bold text-amber-900 mt-1">{results.stats.minimum_response_count}</p>
+                        <p className="text-2xl font-bold text-amber-900 mt-1">{(results.stats?.minimum_response_count || 0).toLocaleString()}</p>
                       </div>
                     </div>
 
@@ -244,8 +244,8 @@ export const HistoricalNoResponseModule: React.FC<HistoricalNoResponseModuleProp
                         </h4>
                         <div className="h-48">
                           <NoResponsePieChart 
-                            matchCount={results.stats.no_response_count} 
-                            noMatchCount={results.stats.total_numbers - results.stats.no_response_count} 
+                            conNoResponse={results.stats.no_response_count || 0} 
+                            sinNoResponse={(results.stats.total_numbers || 0) - (results.stats.no_response_count || 0)} 
                           />
                         </div>
                       </div>
@@ -282,7 +282,7 @@ export const HistoricalNoResponseModule: React.FC<HistoricalNoResponseModuleProp
                       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                         <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                           <h4 className="font-semibold text-slate-900">Vista Previa: NO_RESPONSE (Top 100)</h4>
-                          <span className="text-xs text-slate-500">Mostrando {results.no_response.length} registros</span>
+                          <span className="text-xs text-slate-500">Mostrando {results.no_response?.length || 0} registros</span>
                         </div>
                         <div className="overflow-x-auto max-h-96">
                           <table className="w-full text-sm text-left">
@@ -296,7 +296,7 @@ export const HistoricalNoResponseModule: React.FC<HistoricalNoResponseModuleProp
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                              {results.no_response.map((item: any, idx: number) => (
+                              {results.no_response?.map((item: any, idx: number) => (
                                 <tr key={idx} className="hover:bg-slate-50">
                                   <td className="px-4 py-2 font-mono">{item.e164}</td>
                                   <td className="px-4 py-2">{item.intentos}</td>
@@ -305,7 +305,7 @@ export const HistoricalNoResponseModule: React.FC<HistoricalNoResponseModuleProp
                                   <td className="px-4 py-2 text-slate-500">{item.last_date}</td>
                                 </tr>
                               ))}
-                              {results.no_response.length === 0 && (
+                              {results.no_response?.length === 0 && (
                                 <tr>
                                   <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">No se encontraron registros.</td>
                                 </tr>

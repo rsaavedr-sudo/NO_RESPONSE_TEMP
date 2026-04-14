@@ -7,19 +7,22 @@ interface NoResponsePieChartProps {
   sinNoResponse: number;
 }
 
-export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoResponse, sinNoResponse }) => {
-  const total = conNoResponse + sinNoResponse;
+export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoResponse = 0, sinNoResponse = 0 }) => {
+  const safeConNoResponse = Number(conNoResponse) || 0;
+  const safeSinNoResponse = Number(sinNoResponse) || 0;
+  const total = safeConNoResponse + safeSinNoResponse;
+  
   const data = total > 0 ? [
-    { name: 'NO_RESPONSE', value: conNoResponse },
-    { name: 'OTROS', value: sinNoResponse },
+    { name: 'NO_RESPONSE', value: safeConNoResponse },
+    { name: 'OTROS', value: safeSinNoResponse },
   ] : [
     { name: 'SIN DATOS', value: 1 },
   ];
 
   const COLORS = total > 0 ? ['#ef4444', '#3b82f6'] : ['#e5e7eb']; // Red, Blue or Gray for empty
 
-  const pctNoResponse = total > 0 ? ((conNoResponse / total) * 100).toFixed(1) : "0.0";
-  const pctOtros = total > 0 ? ((sinNoResponse / total) * 100).toFixed(1) : "0.0";
+  const pctNoResponse = total > 0 ? ((safeConNoResponse / total) * 100).toFixed(1) : "0.0";
+  const pctOtros = total > 0 ? ((safeSinNoResponse / total) * 100).toFixed(1) : "0.0";
 
   return (
     <motion.div 
@@ -43,7 +46,7 @@ export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoRes
               paddingAngle={0}
               dataKey="value"
               animationDuration={1500}
-              label={({ name, value, percent }) => `${name}: ${value.toLocaleString()} (${(percent * 100).toFixed(1)}%)`}
+              label={({ name, value, percent }) => `${name}: ${(value || 0).toLocaleString()} (${((percent || 0) * 100).toFixed(1)}%)`}
               labelLine={true}
             >
               {data.map((entry, index) => (
@@ -53,7 +56,7 @@ export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoRes
             {total > 0 && (
               <Tooltip 
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                formatter={(value: number) => [value.toLocaleString(), 'Números']}
+                formatter={(value: number) => [(value || 0).toLocaleString(), 'Números']}
               />
             )}
             <Legend verticalAlign="bottom" height={36}/>
@@ -71,12 +74,12 @@ export const NoResponsePieChart: React.FC<NoResponsePieChartProps> = ({ conNoRes
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-red-500 uppercase">NO_RESPONSE</p>
           <p className="text-2xl font-black text-gray-900">{pctNoResponse}%</p>
-          <p className="text-xs font-bold text-gray-400">{conNoResponse.toLocaleString()} casos</p>
+          <p className="text-xs font-bold text-gray-400">{safeConNoResponse.toLocaleString()} casos</p>
         </div>
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-blue-500 uppercase">OTROS</p>
           <p className="text-2xl font-black text-gray-900">{pctOtros}%</p>
-          <p className="text-xs font-bold text-gray-400">{sinNoResponse.toLocaleString()} casos</p>
+          <p className="text-xs font-bold text-gray-400">{safeSinNoResponse.toLocaleString()} casos</p>
         </div>
       </div>
       
