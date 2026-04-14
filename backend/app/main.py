@@ -60,7 +60,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.4.2.3"}
+    return {"status": "ok", "version": "2.4.2"}
 
 @api_router.get("/maintenance/processed-batches", response_model=List[ProcessedBatch])
 async def list_processed_batches():
@@ -644,6 +644,7 @@ async def download_result(job_id: str):
         media_type="text/csv"
     )
 
+# FIXED_INDENT_V242
 @api_router.post("/noresponse/historical-analysis", response_model=HistoricalAnalysisResponse)
 async def historical_no_response_analysis(request: HistoricalAnalysisRequest):
     """Executa uma análise histórica de NO_RESPONSE."""
