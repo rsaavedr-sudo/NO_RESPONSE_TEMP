@@ -1,7 +1,7 @@
 {
   "name": "t-zero-cdr-analyzer",
   "private": true,
-  "version": "2.4.2",
+  "version": "2.4.2.1",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

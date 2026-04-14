@@ -60,7 +60,7 @@ api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.4.2"}
+    return {"status": "ok", "version": "2.4.2.1"}
 
 @api_router.get("/maintenance/processed-batches", response_model=List[ProcessedBatch])
 async def list_processed_batches():
