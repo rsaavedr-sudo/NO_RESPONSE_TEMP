@@ -1,4 +1,4 @@
-# CDR Analyzer - Guía de Desarrollo Estable (v2.4.1)
+# CDR Analyzer - Guía de Desarrollo Estable (v2.4.1.2)
 
 Esta guía detalla cómo configurar y ejecutar el entorno de desarrollo de forma previsible y estable, evitando conflictos de puertos y procesos duplicados.
 
