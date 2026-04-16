@@ -13,8 +13,6 @@ const PORT = 3000;
 const BACKEND_URL = process.env.BACKEND_URL || "";
 
 async function startServer() {
-  console.log(`[Server] NODE_ENV: ${process.env.NODE_ENV}`);
-  
   // Health check for the Express server itself
   app.get("/healthz", (req, res) => {
     res.json({ status: "ok", mode: BACKEND_URL ? "proxy" : "unified" });
