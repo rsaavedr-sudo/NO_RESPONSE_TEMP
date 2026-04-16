@@ -3,28 +3,20 @@ import { motion } from 'motion/react';
 import { Loader2, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 interface ProgressBarProps {
-  percent?: number | null;
-  stage?: string | null;
-  message?: string | null;
-  status?: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned' | null;
+  percent: number;
+  stage: string;
+  message: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'stopped' | 'cleaned';
 }
 
-export const ProgressBar: React.FC<ProgressBarProps> = ({ 
-  percent = 0, 
-  stage = '', 
-  message = '', 
-  status = 'queued' 
-}) => {
-  const safeStatus = status || 'queued';
-  const isCompleted = safeStatus === 'completed' || safeStatus === 'cleaned';
-  const isFailed = safeStatus === 'failed';
-  const isStopped = safeStatus === 'stopped';
-  const isProcessing = safeStatus === 'processing' || safeStatus === 'queued';
-  
-  const safePercent = typeof percent === 'number' ? percent : 0;
-  const displayPercent = isCompleted ? 100 : safePercent;
+export const ProgressBar: React.FC<ProgressBarProps> = ({ percent, stage, message, status }) => {
+  const isCompleted = status === 'completed' || status === 'cleaned';
+  const isFailed = status === 'failed';
+  const isStopped = status === 'stopped';
+  const isProcessing = status === 'processing' || status === 'queued';
+  const displayPercent = isCompleted ? 100 : percent;
 
-  const statusLabels: Record<string, string> = {
+  const statusLabels = {
     queued: 'En cola',
     processing: 'Procesando',
     completed: 'Completado',
@@ -32,11 +24,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     stopped: 'Detenido',
     cleaned: 'Limpiado'
   };
-
-  const safeStage = typeof stage === 'string' ? stage : stage != null ? String(stage) : '';
-  const cleanedStage = safeStage.replace(/_/g, ' ');
-
-  const safeMessage = typeof message === 'string' ? message : message != null ? String(message) : '';
 
   return (
     <div className="w-full space-y-4">
@@ -47,13 +34,11 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
           {isFailed && <AlertCircle className="w-5 h-5 text-red-500" />}
           {isStopped && <XCircle className="w-5 h-5 text-orange-500" />}
           <span className="font-bold text-gray-900 uppercase tracking-tight">
-            {statusLabels[safeStatus] || safeStatus}
+            {statusLabels[status]}
           </span>
-          {cleanedStage && (
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-widest border-l border-gray-200 pl-2">
-              {cleanedStage}
-            </span>
-          )}
+          <span className="text-xs font-medium text-gray-400 uppercase tracking-widest border-l border-gray-200 pl-2">
+            {stage.replace('_', ' ')}
+          </span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm font-mono font-bold text-gray-900">{displayPercent}%</span>
@@ -74,11 +59,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         />
       </div>
       
-      {safeMessage && (
-        <p className={`text-sm ${isStopped ? 'text-orange-600 font-medium' : isFailed ? 'text-red-600' : 'text-gray-600'}`}>
-          {safeMessage}
-        </p>
-      )}
+      <p className={`text-sm ${isStopped ? 'text-orange-600 font-medium' : isFailed ? 'text-red-600' : 'text-gray-600'}`}>
+        {message}
+      </p>
     </div>
   );
 };

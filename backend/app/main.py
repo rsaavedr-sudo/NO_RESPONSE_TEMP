@@ -56,7 +56,7 @@ async def periodic_cleanup():
 async def startup_event():
     asyncio.create_task(periodic_cleanup())
 
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter()
 
 @api_router.get("/health")
 async def health():

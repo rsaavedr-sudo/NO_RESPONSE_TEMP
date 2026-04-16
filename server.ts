@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
-const BACKEND_URL = process.env.BACKEND_URL || "";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 async function startServer() {
   // Health check for the Express server itself
@@ -25,11 +25,14 @@ async function startServer() {
       createProxyMiddleware({
         target: BACKEND_URL,
         changeOrigin: true,
+        pathRewrite: {
+          "^/api": ""
+        },
         proxyTimeout: 300000, // 5 minutes
         timeout: 300000,      // 5 minutes
         on: {
           proxyReq: (proxyReq, req, res) => {
-            console.log(`[Proxy] ${req.method} ${req.url}`);
+            console.log(`[Proxy] ${req.method} ${req.url} -> ${BACKEND_URL}${proxyReq.path}`);
           },
           error: (err, req, res) => {
             console.error(`[Proxy Error] ${err.message}`);
