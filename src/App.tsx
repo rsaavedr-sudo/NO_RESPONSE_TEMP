@@ -65,7 +65,7 @@ const App: React.FC = () => {
               <span className="text-2xl font-black tracking-tighter text-gray-900 leading-none">T-ZERO</span>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold tracking-[0.2em] text-blue-600 uppercase">CDR Platform</span>
-                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v2.4.2.2</span>
+                <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v2.4.2.3</span>
               </div>
             </div>
           </div>
